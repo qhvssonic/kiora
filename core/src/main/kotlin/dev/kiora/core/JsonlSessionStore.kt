@@ -88,6 +88,7 @@ class JsonlSessionStore(private val directory: File) : SessionStore, SessionSumm
                     targetLeafId = record.optionalString("targetLeafId"),
                     timestampEpochMillis = record.getValue("timestamp").jsonPrimitive.long,
                 )
+                "queued_discard" -> consumedQueueIds += record.string("id")
                 else -> error("Unknown session record")
             }
         }
@@ -134,6 +135,16 @@ class JsonlSessionStore(private val directory: File) : SessionStore, SessionSumm
         withContext(Dispatchers.IO) {
             require(entry.message is AgentMessage.User) { "Queued input must become a user message" }
             synchronized(lock) { appendRecord(sessionId, entryRecord(entry, queueId)) }
+        }
+
+    override suspend fun discardQueuedInput(sessionId: String, queueId: String) =
+        withContext(Dispatchers.IO) {
+            synchronized(lock) {
+                appendRecord(sessionId, JsonObject(mapOf(
+                    "type" to JsonPrimitive("queued_discard"),
+                    "id" to JsonPrimitive(queueId),
+                )))
+            }
         }
 
     private fun entryRecord(entry: SessionEntry, sourceQueueId: String? = null): JsonObject = JsonObject(mapOf(

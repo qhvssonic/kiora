@@ -26,6 +26,9 @@ interface SessionModelInvocationStore {
 interface SessionInputQueueStore {
     suspend fun enqueueInput(sessionId: String, input: QueuedUserInput)
     suspend fun appendQueuedMessage(sessionId: String, entry: SessionEntry, queueId: String)
+    suspend fun discardQueuedInput(sessionId: String, queueId: String) {
+        error("This session store does not support discarding queued inputs")
+    }
 }
 
 /** Useful for tests and ephemeral tasks. Use a durable store for app restarts. */
@@ -93,6 +96,14 @@ class InMemorySessionStore : SessionStore, SessionSummaryStore, SessionUsageStor
             require(entry.message is AgentMessage.User) { "Queued input must become a user message" }
             require(session.pendingQueuedInputs().any { it.id == queueId }) { "Queued input is not pending here" }
             session.append(entry.message, entry.id, entry.timestampEpochMillis)
+            session.markQueuedInputConsumed(queueId)
+        }
+    }
+
+    override suspend fun discardQueuedInput(sessionId: String, queueId: String) {
+        synchronized(sessions) {
+            val session = checkNotNull(sessions[sessionId]) { "Session not found" }
+            require(session.pendingQueuedInputs().any { it.id == queueId }) { "Queued input is not pending here" }
             session.markQueuedInputConsumed(queueId)
         }
     }

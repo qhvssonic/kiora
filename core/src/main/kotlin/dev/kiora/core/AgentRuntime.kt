@@ -33,6 +33,7 @@ class AgentRuntime(
     private val locks = ConcurrentHashMap<String, Mutex>()
     private val queueLocks = ConcurrentHashMap<String, Mutex>()
     private val activeInputQueues = ConcurrentHashMap<String, ConcurrentLinkedQueue<QueuedUserInput>>()
+    private val activeDiscardedQueues = ConcurrentHashMap<String, MutableSet<String>>()
     @Volatile private var observedContextWindowTokens = contextWindowTokens
 
     init {
@@ -43,12 +44,30 @@ class AgentRuntime(
     suspend fun run(sessionId: String, userText: String): RunResult = run(sessionId, userText, emptyList())
 
     suspend fun run(sessionId: String, userText: String, images: List<ToolImage>): RunResult =
+        runInternal(sessionId, userText, images, null)
+
+    /** Start a new run from one durable queued item, consuming it with the initial user message. */
+    suspend fun runQueued(sessionId: String, queueId: String): RunResult {
+        val session = checkNotNull(store.load(sessionId)) { "Session not found" }
+        val input = checkNotNull(session.pendingQueuedInputs().firstOrNull { it.id == queueId }) {
+            "Queued input is not pending here"
+        }
+        return runInternal(sessionId, input.text, emptyList(), queueId)
+    }
+
+    private suspend fun runInternal(sessionId: String, userText: String, images: List<ToolImage>,
+                                    initialQueueId: String?): RunResult =
         lockFor(sessionId).withLock {
         require(userText.isNotBlank())
         val liveInputs = ConcurrentLinkedQueue<QueuedUserInput>()
+        val discardedInputs = ConcurrentHashMap.newKeySet<String>()
         activeInputQueues[sessionId] = liveInputs
+        activeDiscardedQueues[sessionId] = discardedInputs
         try {
         val session = store.load(sessionId) ?: SessionTree.create(sessionId).also { store.create(sessionId) }
+        if (initialQueueId != null) require(session.pendingQueuedInputs().any {
+            it.id == initialQueueId && it.text == userText
+        }) { "Queued input is not pending here" }
         events.emit(AgentEvent.RunStarted(sessionId))
 
         suspend fun append(message: AgentMessage, sourceQueueId: String? = null): SessionEntry {
@@ -63,7 +82,7 @@ class AgentRuntime(
             if (store !is SessionInputQueueStore) return false
             return queueLockFor(sessionId).withLock {
                 val pathIds = session.activeEntries().map { it.id }.toSet()
-                val consumed = session.consumedQueuedInputIds()
+                val consumed = session.consumedQueuedInputIds() + discardedInputs
                 val pending = (session.allQueuedInputs() + liveInputs.toList()).distinctBy { it.id }
                     .filter { it.kind == kind && it.id !in consumed &&
                         (it.targetLeafId == null || it.targetLeafId in pathIds) }.take(maxCount)
@@ -113,7 +132,15 @@ class AgentRuntime(
             }
         }
 
-        append(AgentMessage.User(userText, images))
+        if (initialQueueId == null) append(AgentMessage.User(userText, images))
+        else queueLockFor(sessionId).withLock {
+            val latest = checkNotNull(store.load(sessionId)) { "Session not found" }
+            require(latest.pendingQueuedInputs().any { it.id == initialQueueId && it.text == userText }) {
+                "Queued input is not pending here"
+            }
+            append(AgentMessage.User(userText, images), initialQueueId)
+            session.markQueuedInputConsumed(initialQueueId)
+        }
         val result = try {
             withTimeout(limits.timeoutMillis) {
                 var toolCalls = 0
@@ -288,6 +315,7 @@ class AgentRuntime(
         result
         } finally {
             activeInputQueues.remove(sessionId, liveInputs)
+            activeDiscardedQueues.remove(sessionId, discardedInputs)
         }
     }
 
@@ -304,6 +332,21 @@ class AgentRuntime(
     /** Runs after the current answer finishes; only one follow-up is applied per model turn. */
     suspend fun queueFollowUp(sessionId: String, text: String): QueuedUserInput =
         enqueueInput(sessionId, QueuedInputKind.FOLLOW_UP, text)
+
+    /** Remove an item that has not yet entered the session; safe while run() is active. */
+    suspend fun discardQueuedInput(sessionId: String, queueId: String) {
+        val queueStore = store as? SessionInputQueueStore
+            ?: error("This session store does not support queued inputs")
+        queueLockFor(sessionId).withLock {
+            val session = checkNotNull(store.load(sessionId)) { "Session not found" }
+            require(session.pendingQueuedInputs().any { it.id == queueId }) {
+                "Queued input is not pending here"
+            }
+            queueStore.discardQueuedInput(sessionId, queueId)
+            activeDiscardedQueues[sessionId]?.add(queueId)
+            activeInputQueues[sessionId]?.removeIf { it.id == queueId }
+        }
+    }
 
     private suspend fun enqueueInput(sessionId: String, kind: QueuedInputKind, text: String): QueuedUserInput {
         require(text.isNotBlank()) { "Empty queued input" }

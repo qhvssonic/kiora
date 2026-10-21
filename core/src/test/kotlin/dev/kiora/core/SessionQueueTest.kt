@@ -132,4 +132,69 @@ class SessionQueueTest {
         assertIs<RunResult.Completed>(running.await())
         assertEquals(listOf(queued), store.load("limited")!!.pendingQueuedInputs())
     }
+
+    @Test
+    fun `a queued item can start a new run without appearing twice`() = runBlocking {
+        val store = InMemorySessionStore()
+        store.create("guided")
+        store.append("guided", SessionEntry("first", null, 1, AgentMessage.User("first")))
+        val model = object : ModelPort {
+            override suspend fun respond(messages: List<AgentMessage>, tools: List<ToolDefinition>) =
+                AgentMessage.Assistant("answered ${(messages.last() as AgentMessage.User).text}")
+        }
+        val runtime = AgentRuntime(model, emptyList(), store, { ToolAuthorization.Allowed })
+        val queued = runtime.queueFollowUp("guided", "guide me")
+
+        assertEquals("answered guide me", assertIs<RunResult.Completed>(
+            runtime.runQueued("guided", queued.id)).text)
+        val session = store.load("guided")!!
+        assertEquals(listOf("first", "guide me"), session.activeMessages()
+            .filterIsInstance<AgentMessage.User>().map { it.text })
+        assertTrue(session.pendingQueuedInputs().isEmpty())
+        assertEquals(setOf(queued.id), session.consumedQueuedInputIds())
+    }
+
+    @Test
+    fun `discarded queued input cannot enter an active run`() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val resume = CompletableDeferred<Unit>()
+        val model = object : ModelPort {
+            override suspend fun respond(messages: List<AgentMessage>, tools: List<ToolDefinition>): AgentMessage.Assistant {
+                started.complete(Unit)
+                resume.await()
+                return AgentMessage.Assistant("answer")
+            }
+        }
+        val store = InMemorySessionStore()
+        val runtime = AgentRuntime(model, emptyList(), store, { ToolAuthorization.Allowed })
+        val running = async { runtime.run("discard", "first") }
+        started.await()
+        val queued = runtime.queueFollowUp("discard", "do not run")
+        runtime.discardQueuedInput("discard", queued.id)
+        resume.complete(Unit)
+
+        assertEquals("answer", assertIs<RunResult.Completed>(running.await()).text)
+        val session = store.load("discard")!!
+        assertEquals(listOf("first"), session.activeMessages()
+            .filterIsInstance<AgentMessage.User>().map { it.text })
+        assertTrue(session.pendingQueuedInputs().isEmpty())
+    }
+
+    @Test
+    fun `JSONL discard survives reopening`() = runBlocking {
+        val store = JsonlSessionStore(directory.toFile())
+        store.create("discarded")
+        store.append("discarded", SessionEntry("u", null, 1, AgentMessage.User("first")))
+        val runtime = AgentRuntime(object : ModelPort {
+            override suspend fun respond(messages: List<AgentMessage>, tools: List<ToolDefinition>) =
+                AgentMessage.Assistant("done")
+        },
+            emptyList(), store, { ToolAuthorization.Allowed })
+        val queued = runtime.queueFollowUp("discarded", "remove")
+        runtime.discardQueuedInput("discarded", queued.id)
+
+        val reopened = JsonlSessionStore(directory.toFile()).load("discarded")!!
+        assertTrue(reopened.pendingQueuedInputs().isEmpty())
+        assertEquals(setOf(queued.id), reopened.consumedQueuedInputIds())
+    }
 }
