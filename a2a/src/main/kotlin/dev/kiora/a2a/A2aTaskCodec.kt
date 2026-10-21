@@ -9,7 +9,8 @@ import kotlinx.serialization.json.jsonPrimitive
 internal object A2aTaskCodec {
     fun decode(response: JsonObject, directMessageId: () -> String): RemoteTask {
         val direct = response["message"]?.jsonObject
-        if (direct != null) return RemoteTask(directMessageId(), RemoteTaskState.COMPLETED, textParts(direct))
+        if (direct != null) return RemoteTask(directMessageId(), RemoteTaskState.COMPLETED,
+            textParts(direct), direct["contextId"]?.jsonPrimitive?.content)
         val task = (response["task"] ?: response).jsonObject
         val id = task.getValue("id").jsonPrimitive.content
         val status = task.getValue("status").jsonObject
@@ -30,7 +31,7 @@ internal object A2aTaskCodec {
         val output = artifacts.joinToString("\n").ifBlank {
             status["message"]?.jsonObject?.let(::textParts).orEmpty()
         }
-        return RemoteTask(id, state, output.ifBlank { null })
+        return RemoteTask(id, state, output.ifBlank { null }, task["contextId"]?.jsonPrimitive?.content)
     }
 
     private fun textParts(container: JsonObject): String? = container["parts"]?.jsonArray

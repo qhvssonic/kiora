@@ -30,8 +30,11 @@ data class A2aUserMessage(
     val text: String,
     val files: List<A2aInlineFile> = emptyList(),
     val data: JsonObject? = null,
+    /** Existing conversation context; omit it on the first request so the peer can assign one. */
+    val contextId: String? = null,
 ) {
     init {
+        require(contextId == null || contextId.isNotBlank()) { "contextId must not be blank" }
         require(text.isNotBlank() || files.isNotEmpty() || data != null) {
             "A2A message must contain text, a file or structured data"
         }

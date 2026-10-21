@@ -25,13 +25,13 @@ flowchart LR
 | 模块 | 内容 |
 | --- | --- |
 | `core` | 有界模型/工具循环、取消传播、工具选择与授权、JSON Schema 参数基础校验、上下文窗口裁剪与持久摘要、模型用量记录、运行中指令队列、图片消息与工具结果、事件、分支会话、内存和 JSONL 存储；另提供可选的 `WorkspaceTools` |
-| `a2a` | 电脑端任务委托；从 Agent Card 读取每项 skill 及输入 MIME 类型并生成模型工具；A2A 1.x HTTP+JSON 与 JSONRPC 的发现、发送、续接、轮询、取消、文本、内联文件及 JSON 数据发送，支持 Bearer 凭据 |
+| `a2a` | 电脑端任务委托；从 Agent Card 读取每项 skill 及输入 MIME 类型并生成模型工具；A2A 1.x HTTP+JSON 与 JSONRPC 的发现、发送、续接、轮询、取消、文本、内联文件及 JSON 数据发送，支持 Bearer 凭据和跨任务的 `contextId` |
 | `android-attachments` | 将系统选择器授权的 `content://` 文件或照片安全地读成有大小上限的 A2A 附件 |
 | `android-storage-tools` | 基于 Android SAF 持久授权的目录与单张照片工具：浏览、搜索、查看信息、读取文本、复制、移动、重命名、删除；宿主提供授权 URI 清单 |
 | `android-code-sandbox` | 在 Android 独立进程中执行受限 JavaScript；可选安装 |
 | `model-chat` | Chat Completions 兼容端点的多提供商配置、文本与函数工具、图片工具结果、SSE 增量输出 |
 | `model-litert` | Android 端直接运行 `.litertlm` 模型，可选择 CPU/GPU 后端，支持流式文本、可选单图视觉输入与手动工具调用；GPU 可用性取决于设备和模型 |
-| `model-mnn` | 连接同一手机上 MNN Chat 应用开放的本地 Chat Completions API |
+| `model-mnn` | Android 进程内运行 MNN 3.6.1 模型目录，支持文本、视觉模型图片输入、流式输出、取消和经 Kiora 授权的工具循环；当前仅打包 arm64-v8a |
 | `speech` | 纯 Kotlin 的短音频转写接口，与智能体工具调用分离 |
 | `speech-sherpa-onnx` | 可选 Android 端 SenseVoice Small int8 非流式识别适配器，需另备 sherpa-onnx AAR 与模型文件 |
 | `document-ocr` | 纯 Kotlin 的单页 OCR 契约，返回原文、逐行文字和位置 |
@@ -41,6 +41,8 @@ flowchart LR
 | `sample` | 不依赖网络的 JVM 命令行演示：智能体将任务委托给模拟电脑端 |
 
 `ModelPort` 可由宿主应用自行实现；`model-chat` 提供 Chat Completions 兼容适配器。A2A 客户端支持文本和总计 10 MiB 以内的内联文件发送，以及同步请求/轮询；目前不包含 A2A SSE、远端文件下载、推送通知或完整 A2A 服务端。电脑端需要自行提供符合 A2A 1.x HTTP+JSON 或 JSONRPC 的服务，普通 CLI 入口不能直接当作 A2A 服务。
+
+首次委托可不传 `contextId`，由远端在 Task 中返回；宿主按本地会话和远端连接保存该值，下一次新任务通过 `A2aUserMessage.contextId` 传回。`taskId` 仅用于继续同一个未完成任务，不能替代跨任务的会话上下文。
 
 拟演示的纸质文档流程由 SDK 能力和宿主应用共同组成：`document-ocr` 契约及可选的 `document-ocr-paddle` 适配器负责单页识别，`WorkspaceTools` 可供智能体写入 Markdown，`a2a` 可通过宿主核验的文件 ID 上传工作区文件。扫描界面、人工校对、工具授权和工作区文件选择由 `kiora-companion` 实现；电脑端处理由另行部署的 A2A Agent 执行。
 
@@ -66,6 +68,8 @@ flowchart LR
 宿主可按**实际模型**设置 `contextWindowTokens`，并配置 `reserveOutputTokens`、`extraInputTokens`。运行时估算工具定义、文本、图片与输出预留量，保留当前用户轮次，尽量附带最近的完整历史轮次；过长的工具文本结果可仅在模型请求中截断。完整会话仍保留在存储中。若模型报告上下文超限，运行时会缩小窗口重试一次。这是估算与错误恢复机制，并非模型 tokenizer 的精确计数；未设置窗口时不会自动裁剪历史。
 
 长会话可由宿主调用 `AgentRuntime.compact()` 生成分支感知的持久摘要；兼容端点报告的 token 用量可作为会话元数据保存。运行中还可排入 steering 和 follow-up 指令。具体时机、存储要求与恢复语义见 [会话生命周期](docs/session-lifecycle.md)。
+
+宿主也可传入 `AutoCompaction`，按自己的设备资源预算在模型请求前自动调用持久摘要。摘要失败时仍沿用已配置的上下文窗口裁剪保护；自动摘要不会删除原始会话消息。
 
 ## 运行
 
@@ -101,7 +105,7 @@ Demo 的“启用独立进程 JavaScript 工具”默认关闭。勾选并重新
 
 在自己的 Android 宿主中：
 
-1. 使用 `ChatCompletionModelPort`、`LiteRtModelPort`、`MnnChatModelPort`，或实现 `ModelPort` 连接其他模型 API。需要增量文本时实现或调用 `respondStreaming()`。
+1. 使用 `ChatCompletionModelPort`、`LiteRtModelPort`、`MnnModelPort`，或实现 `ModelPort` 连接其他模型 API。需要增量文本时实现或调用 `respondStreaming()`。
 2. 选择 `WorkspaceTools` 或为真实工具实现 `AgentTool`。用 `ActiveToolSelector` 按会话选择本轮可用的工具，再用 `ToolAuthorizer` 接入 Android 的确认界面；授权请求带有 `sessionId`、工具定义和已校验的调用，可由宿主决定自动允许或弹窗。未启用的工具不能执行。文件访问范围由工具实现和 Android 系统权限约束。
 3. 将 `SessionStore` 绑定到应用私有目录；`JsonlSessionStore` 可作初始方案，规模扩大后可换成 Room。存储 I/O 在后台调度器执行。
 4. 从电脑端的 Agent Card URL 使用 `A2aPeerConnector.discoverConnection()` 创建连接，再把 `connection.skillTools()` 放进工具列表；卡片没有技能时可使用 `A2aDelegateTool(connection.peer)`。应用需要 `INTERNET` 权限；若使用局域网 HTTP，Android 的明文流量策略也需按目标域名配置。

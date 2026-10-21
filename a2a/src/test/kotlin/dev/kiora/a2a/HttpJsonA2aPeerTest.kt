@@ -19,7 +19,7 @@ class HttpJsonA2aPeerTest {
             } else {
                 assertEquals("Bearer secret", headers["Authorization"])
                 assertEquals("1.0", headers["A2A-Version"])
-                HttpReply(200, """{"task":{"id":"t-1","status":{"state":"TASK_STATE_COMPLETED"},"artifacts":[{"parts":[{"text":"done"}]}]}}""")
+                HttpReply(200, """{"task":{"id":"t-1","contextId":"conversation-1","status":{"state":"TASK_STATE_COMPLETED"},"artifacts":[{"parts":[{"text":"done"}]}]}}""")
             }
         }
         val peer = HttpJsonA2aPeer.discover(
@@ -29,14 +29,16 @@ class HttpJsonA2aPeerTest {
             { "message-1" },
         )
 
-        val task = peer.send("整理报告")
+        val task = peer.send(A2aUserMessage("整理报告", contextId = "conversation-1"))
 
         assertEquals(RemoteTaskState.COMPLETED, task.state)
         assertEquals("done", task.output)
+        assertEquals("conversation-1", task.contextId)
         assertEquals("https://desktop.test/a2a/message:send", calls.last().second)
         val message = Json.parseToJsonElement(calls.last().third!!).jsonObject.getValue("message").jsonObject
         assertEquals("message-1", message.getValue("messageId").jsonPrimitive.content)
         assertEquals("ROLE_USER", message.getValue("role").jsonPrimitive.content)
+        assertEquals("conversation-1", message.getValue("contextId").jsonPrimitive.content)
     }
 
     @Test

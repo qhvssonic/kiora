@@ -81,6 +81,7 @@ class HttpJsonA2aPeer private constructor(
             "parts" to content.toParts(),
         )
         if (taskId != null) message["taskId"] = JsonPrimitive(taskId)
+        content.contextId?.let { message["contextId"] = JsonPrimitive(it) }
         val body = mutableMapOf<String, kotlinx.serialization.json.JsonElement>(
             "message" to JsonObject(message),
         )

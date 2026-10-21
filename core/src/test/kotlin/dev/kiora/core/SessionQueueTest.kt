@@ -155,6 +155,49 @@ class SessionQueueTest {
     }
 
     @Test
+    fun `queued run may add host guidance without changing the queued source`() = runBlocking {
+        val store = InMemorySessionStore()
+        store.create("routed")
+        val queuedText = "把刚才的文件通过 dsh 发送到桌面"
+        val queued = AgentRuntime(object : ModelPort {
+            override suspend fun respond(messages: List<AgentMessage>, tools: List<ToolDefinition>) =
+                AgentMessage.Assistant((messages.last() as AgentMessage.User).text)
+        }, emptyList(), store, { ToolAuthorization.Allowed }).queueFollowUp("routed", queuedText)
+        val runtime = AgentRuntime(object : ModelPort {
+            override suspend fun respond(messages: List<AgentMessage>, tools: List<ToolDefinition>) =
+                AgentMessage.Assistant((messages.last() as AgentMessage.User).text)
+        }, emptyList(), store, { ToolAuthorization.Allowed })
+        val guidedText = "$queuedText\n\n[Host routing: use the dsh skill and attach workspace:report.md]"
+
+        assertEquals(guidedText, assertIs<RunResult.Completed>(
+            runtime.runQueued("routed", queued.id, guidedText)).text)
+        assertEquals(listOf(guidedText), store.load("routed")!!.activeMessages()
+            .filterIsInstance<AgentMessage.User>().map { it.text })
+        assertTrue(store.load("routed")!!.pendingQueuedInputs().isEmpty())
+    }
+
+    @Test
+    fun `host can retain follow ups for separate routed runs`() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val resume = CompletableDeferred<Unit>()
+        val store = InMemorySessionStore()
+        val runtime = AgentRuntime(object : ModelPort {
+            override suspend fun respond(messages: List<AgentMessage>, tools: List<ToolDefinition>): AgentMessage.Assistant {
+                started.complete(Unit)
+                resume.await()
+                return AgentMessage.Assistant("first answer")
+            }
+        }, emptyList(), store, { ToolAuthorization.Allowed }, autoRunFollowUps = false)
+        val running = async { runtime.run("routed-followups", "first") }
+        started.await()
+        val queued = runtime.queueFollowUp("routed-followups", "through dsh")
+        resume.complete(Unit)
+
+        assertEquals("first answer", assertIs<RunResult.Completed>(running.await()).text)
+        assertEquals(listOf(queued), store.load("routed-followups")!!.pendingQueuedInputs())
+    }
+
+    @Test
     fun `discarded queued input cannot enter an active run`() = runBlocking {
         val started = CompletableDeferred<Unit>()
         val resume = CompletableDeferred<Unit>()

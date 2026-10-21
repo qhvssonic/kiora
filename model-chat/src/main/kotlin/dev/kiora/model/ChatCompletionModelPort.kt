@@ -24,7 +24,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
-const val DEFAULT_AGENT_SYSTEM_PROMPT = "You are Kiora, a mobile agent. When the user asks for something a tool provides, call the matching tool before answering. In particular, use an available A2A tool for organization-specific knowledge or live business data; do not guess those facts. Pass the user's complete question to the tool, then explain its result clearly."
+const val DEFAULT_AGENT_SYSTEM_PROMPT = "You are Kiora, a mobile agent. When the user asks for something a tool provides, call the matching tool before answering. Use an available A2A tool for remote agent tasks, organization-specific knowledge, or live business data; do not guess those facts. A shell tool runs on the local host, not on a remote agent; never run a remote agent's name as a local shell command. To send a local file to a remote agent, use its A2A tool's files argument when available. Pass the user's complete question to the tool, then explain its result clearly."
 
 data class ModelHttpReply(val status: Int, val body: String)
 

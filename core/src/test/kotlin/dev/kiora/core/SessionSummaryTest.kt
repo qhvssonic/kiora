@@ -58,6 +58,33 @@ class SessionSummaryTest {
     }
 
     @Test
+    fun `automatic compaction checkpoints older turns before the next model request`() = runBlocking {
+        val store = InMemorySessionStore()
+        val seen = mutableListOf<List<AgentMessage>>()
+        val model = object : ModelPort {
+            override suspend fun respond(messages: List<AgentMessage>, tools: List<ToolDefinition>): AgentMessage.Assistant {
+                seen += messages
+                return AgentMessage.Assistant("answer")
+            }
+        }
+        var summaryCalls = 0
+        val runtime = AgentRuntime(model, emptyList(), store, { ToolAuthorization.Allowed },
+            autoCompaction = AutoCompaction(30, SessionSummarizer {
+                summaryCalls++
+                "Earlier request was completed"
+            }))
+
+        runtime.run("auto-summary", "first request")
+        runtime.run("auto-summary", "second request")
+
+        assertEquals(1, summaryCalls)
+        assertEquals(AgentMessage.ContextSummary("Earlier request was completed"), seen.last().first())
+        assertEquals(listOf("second request"), seen.last().filterIsInstance<AgentMessage.User>().map { it.text })
+        assertEquals(1, runtime.session("auto-summary")!!.allSummaries().size)
+        assertEquals(4, runtime.session("auto-summary")!!.activeMessages().size)
+    }
+
+    @Test
     fun `provider usage is tied to the assistant entry and follows the branch`() = runBlocking {
         val store = InMemorySessionStore()
         val events = mutableListOf<AgentEvent.ModelUsageReported>()

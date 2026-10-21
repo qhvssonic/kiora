@@ -116,7 +116,7 @@ class WorkspaceTools(
     private inner class Shell : AgentTool {
         // A shell can exercise all permissions of the Android app UID, including network access.
         override val definition = ToolDefinition(
-            "shell", "Run one shell command as this app's Android UID, starting in the agent workspace. The command is not confined to the workspace; Android app permissions still apply. Output and runtime are limited.",
+            "shell", "Run a command on this app's local host, starting in the agent workspace. This does not invoke a remote A2A agent by name; use an available A2A tool for remote tasks. The command is not confined to the workspace; host permissions still apply. Output and runtime are limited.",
             parameters("command" to stringProperty("Shell command to run"), required = listOf("command")),
         )
 

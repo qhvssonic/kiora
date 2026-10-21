@@ -163,6 +163,18 @@ fun interface SessionSummarizer {
     suspend fun summarize(messages: List<AgentMessage>): String
 }
 
+/** Optional automatic checkpoint before a model request exceeds the host's history budget. */
+data class AutoCompaction(
+    val triggerTokens: Int,
+    val summarizer: SessionSummarizer,
+    val keepRecentTurns: Int = 1,
+) {
+    init {
+        require(triggerTokens > 0)
+        require(keepRecentTurns >= 1)
+    }
+}
+
 interface AgentTool {
     val definition: ToolDefinition
     suspend fun execute(arguments: JsonObject): String

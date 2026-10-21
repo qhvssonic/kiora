@@ -42,6 +42,7 @@ class JsonRpcA2aPeer internal constructor(
             "parts" to content.toParts(),
         )
         if (taskId != null) message["taskId"] = JsonPrimitive(taskId)
+        content.contextId?.let { message["contextId"] = JsonPrimitive(it) }
         return A2aTaskCodec.decode(
             call("SendMessage", params(mapOf(
                 "message" to JsonObject(message),

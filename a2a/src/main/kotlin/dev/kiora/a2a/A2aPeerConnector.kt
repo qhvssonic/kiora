@@ -25,6 +25,8 @@ data class A2aAgentConnection(
     val description: String,
     val skills: List<A2aSkill>,
     val defaultInputModes: List<String> = emptyList(),
+    /** Resolved URL actually used for task requests after any loopback-host rewrite. */
+    val endpointUrl: String = "",
 ) {
     /** Expose each advertised skill to the model as a separate callable tool. */
     fun skillTools(
@@ -33,6 +35,8 @@ data class A2aAgentConnection(
         resultSender: (suspend (A2aUserMessage, String?) -> ToolOutput)? = null,
         toolNamePrefix: String = "a2a",
         fileIdValidator: (suspend (List<String>) -> String?)? = null,
+        argumentValidator: (suspend (JsonObject) -> String?)? = null,
+        requireFileSource: Boolean = false,
     ): List<A2aSkillTool> = skills.mapIndexed { index, skill ->
         val safePrefix = toolNamePrefix.replace(Regex("[^A-Za-z0-9_]"), "_")
             .take(24).ifBlank { "a2a" }
@@ -40,7 +44,7 @@ data class A2aAgentConnection(
             .take(if (safePrefix == "a2a") 48 else 24).ifBlank { "skill" }
         A2aSkillTool(peer, name, skill, "${safePrefix}_${safeId}_${index + 1}",
             skill.inputModes.ifEmpty { defaultInputModes }, fileLoader, messageSender, resultSender,
-            fileIdValidator)
+            fileIdValidator, argumentValidator, requireFileSource)
     }
 }
 
@@ -116,6 +120,7 @@ object A2aPeerConnector {
             description = card["description"]?.jsonPrimitive?.content?.trim().orEmpty(),
             skills = skills,
             defaultInputModes = (card["defaultInputModes"] as? JsonArray).orEmpty().map { it.jsonPrimitive.content },
+            endpointUrl = endpoint,
         )
     }
 }

@@ -37,7 +37,7 @@ class LiteRtModelPort(
     private val modelFile: File,
     private val backend: LiteRtBackend = LiteRtBackend.CPU,
     private val cacheDirectory: File? = null,
-    private val systemPrompt: String = "You are Kiora, a mobile agent. Call a provided tool when it can answer the user's request. Do not invent tool results.",
+    private val systemPrompt: String = "You are Kiora, a mobile agent. Call a provided tool when it can answer the user's request. Do not invent tool results. A shell tool runs on this Android phone; an A2A tool contacts a remote agent. Never run a remote agent's name as a phone shell command. To send a local file to a remote agent, use its A2A tool's files argument when available.",
     private val enableVision: Boolean = false,
     private val imageProvider: suspend () -> List<ByteArray> = { emptyList() },
 ) : UsageReportingModelPort {

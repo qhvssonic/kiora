@@ -28,6 +28,8 @@ class AgentRuntime(
     private val contextWindowTokens: Int? = null,
     private val reserveOutputTokens: Int = 768,
     private val extraInputTokens: suspend () -> Int = { 0 },
+    private val autoCompaction: AutoCompaction? = null,
+    private val autoRunFollowUps: Boolean = true,
 ) {
     private val toolsByName = tools.associateBy { it.definition.name }
     private val locks = ConcurrentHashMap<String, Mutex>()
@@ -47,16 +49,17 @@ class AgentRuntime(
         runInternal(sessionId, userText, images, null)
 
     /** Start a new run from one durable queued item, consuming it with the initial user message. */
-    suspend fun runQueued(sessionId: String, queueId: String): RunResult {
+    suspend fun runQueued(sessionId: String, queueId: String,
+                          modelText: String? = null): RunResult {
         val session = checkNotNull(store.load(sessionId)) { "Session not found" }
         val input = checkNotNull(session.pendingQueuedInputs().firstOrNull { it.id == queueId }) {
             "Queued input is not pending here"
         }
-        return runInternal(sessionId, input.text, emptyList(), queueId)
+        return runInternal(sessionId, modelText ?: input.text, emptyList(), queueId, input.text)
     }
 
     private suspend fun runInternal(sessionId: String, userText: String, images: List<ToolImage>,
-                                    initialQueueId: String?): RunResult =
+                                    initialQueueId: String?, queuedSourceText: String? = null): RunResult =
         lockFor(sessionId).withLock {
         require(userText.isNotBlank())
         val liveInputs = ConcurrentLinkedQueue<QueuedUserInput>()
@@ -66,7 +69,7 @@ class AgentRuntime(
         try {
         val session = store.load(sessionId) ?: SessionTree.create(sessionId).also { store.create(sessionId) }
         if (initialQueueId != null) require(session.pendingQueuedInputs().any {
-            it.id == initialQueueId && it.text == userText
+            it.id == initialQueueId && it.text == queuedSourceText
         }) { "Queued input is not pending here" }
         events.emit(AgentEvent.RunStarted(sessionId))
 
@@ -135,7 +138,7 @@ class AgentRuntime(
         if (initialQueueId == null) append(AgentMessage.User(userText, images))
         else queueLockFor(sessionId).withLock {
             val latest = checkNotNull(store.load(sessionId)) { "Session not found" }
-            require(latest.pendingQueuedInputs().any { it.id == initialQueueId && it.text == userText }) {
+            require(latest.pendingQueuedInputs().any { it.id == initialQueueId && it.text == queuedSourceText }) {
                 "Queued input is not pending here"
             }
             append(AgentMessage.User(userText, images), initialQueueId)
@@ -148,8 +151,24 @@ class AgentRuntime(
                     val selectedNames = activeTools.select(sessionId, toolsByName.keys.toSet()).toSet()
                     val selectedTools = toolsByName.filterKeys { it in selectedNames }
                     val definitions = selectedTools.values.map { tool -> tool.definition }
-                    val transformed = contextTransformer.transform(session.modelMessagesThrough())
+                    var transformed = contextTransformer.transform(session.modelMessagesThrough())
                     val extraTokens = extraInputTokens()
+                    autoCompaction?.let { policy ->
+                        val estimated = transformed.sumOf(ContextWindowLimiter::estimate) +
+                            definitions.sumOf(ContextWindowLimiter::estimate) +
+                            extraTokens + reserveOutputTokens
+                        if (estimated >= policy.triggerTokens) {
+                            try {
+                                if (compactSession(sessionId, session, policy.keepRecentTurns,
+                                        policy.summarizer) != null)
+                                    transformed = contextTransformer.transform(session.modelMessagesThrough())
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                // Summary generation is best effort; the window limiter remains the fallback.
+                            }
+                        }
+                    }
                     suspend fun respond(window: Int?): ModelResponse {
                         val visible = if (window == null) transformed else ContextWindowLimiter.fit(
                             transformed, definitions, window,
@@ -190,7 +209,7 @@ class AgentRuntime(
                     if (answer.toolCalls.isEmpty()) {
                         if (turnIndex < limits.maxModelTurns - 1) {
                             if (applyQueued(QueuedInputKind.STEERING, Int.MAX_VALUE)) return@repeat
-                            if (applyQueued(QueuedInputKind.FOLLOW_UP, 1)) return@repeat
+                            if (autoRunFollowUps && applyQueued(QueuedInputKind.FOLLOW_UP, 1)) return@repeat
                         }
                         return@withTimeout RunResult.Completed(answer.text, sessionId)
                     }
@@ -368,26 +387,32 @@ class AgentRuntime(
         keepRecentTurns: Int = 2,
         summarizer: SessionSummarizer,
     ): SessionSummary? = lockFor(sessionId).withLock {
+        val session = checkNotNull(store.load(sessionId)) { "Session not found" }
+        compactSession(sessionId, session, keepRecentTurns, summarizer)
+    }
+
+    private suspend fun compactSession(sessionId: String, session: SessionTree,
+        keepRecentTurns: Int, summarizer: SessionSummarizer): SessionSummary? {
         require(keepRecentTurns >= 1)
         val summaryStore = store as? SessionSummaryStore
             ?: error("This session store does not support durable summaries")
-        val session = checkNotNull(store.load(sessionId)) { "Session not found" }
         val path = session.activeEntries()
         val userStarts = path.indices.filter { path[it].message is AgentMessage.User }
-        if (userStarts.size <= keepRecentTurns) return@withLock null
+        if (userStarts.size <= keepRecentTurns) return null
         val boundaryIndex = userStarts[userStarts.size - keepRecentTurns] - 1
-        val boundary = path.getOrNull(boundaryIndex) ?: return@withLock null
-        val answer = boundary.message as? AgentMessage.Assistant ?: return@withLock null
-        if (answer.toolCalls.isNotEmpty()) return@withLock null
+        val boundary = path.getOrNull(boundaryIndex) ?: return null
+        val answer = boundary.message as? AgentMessage.Assistant ?: return null
+        if (answer.toolCalls.isNotEmpty()) return null
         val previousBoundary = session.activeSummary()?.throughEntryId
         if (previousBoundary != null && path.indexOfFirst { it.id == previousBoundary } >= boundaryIndex)
-            return@withLock null
+            return null
         val text = summarizer.summarize(session.modelMessagesThrough(boundary.id)).trim()
         require(text.isNotBlank()) { "Empty session summary" }
         require(text.toByteArray(Charsets.UTF_8).size <= 32 * 1024) { "Session summary exceeds 32 KiB" }
         val summary = SessionSummary(newId(), boundary.id, now(), text)
         summaryStore.appendSummary(sessionId, summary)
-        summary
+        session.addSummary(summary)
+        return summary
     }
 
     suspend fun session(sessionId: String): SessionTree? = lockFor(sessionId).withLock {

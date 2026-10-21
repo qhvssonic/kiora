@@ -46,6 +46,7 @@ class A2aPeerConnectorTest {
 
         assertEquals(listOf("企业知识库检索", "企业业务数据查询"), connection.skills.map { it.name })
         assertEquals(listOf("text/plain"), connection.defaultInputModes)
+        assertEquals("http://192.168.1.5:9999/v1", connection.endpointUrl)
         assertEquals(listOf("text/plain", "image/jpeg"), connection.skills[0].inputModes)
         assertEquals(listOf("a2a_knowledge_search_1", "a2a_text2sql_query_2"), tools.map { it.definition.name })
         assertEquals(listOf("a2a_dsh_knowledge_search_1", "a2a_dsh_text2sql_query_2"),
@@ -70,7 +71,9 @@ class A2aPeerConnectorTest {
                 assertEquals("SendMessage", request.getValue("method").jsonPrimitive.content)
                 assertEquals("false", request.getValue("params").jsonObject
                     .getValue("configuration").jsonObject.getValue("blocking").jsonPrimitive.content)
-                HttpReply(200, """{"jsonrpc":"2.0","id":"request-2","result":{"task":{"id":"task-1","status":{"state":"TASK_STATE_COMPLETED"},"artifacts":[{"parts":[{"text":"done"}]}]}}}""")
+                assertEquals("conversation-1", request.getValue("params").jsonObject
+                    .getValue("message").jsonObject.getValue("contextId").jsonPrimitive.content)
+                HttpReply(200, """{"jsonrpc":"2.0","id":"request-2","result":{"task":{"id":"task-1","contextId":"conversation-1","status":{"state":"TASK_STATE_COMPLETED"},"artifacts":[{"parts":[{"text":"done"}]}]}}}""")
             }
         }
         var nextId = 0
@@ -82,11 +85,12 @@ class A2aPeerConnectorTest {
             newId = { "request-${++nextId}" },
         )
 
-        val result = peer.send("please help")
+        val result = peer.send(A2aUserMessage("please help", contextId = "conversation-1"))
 
         assertIs<JsonRpcA2aPeer>(peer)
         assertEquals(RemoteTaskState.COMPLETED, result.state)
         assertEquals("done", result.output)
+        assertEquals("conversation-1", result.contextId)
         assertEquals("POST" to "http://192.168.1.5:9999/v1", calls.last())
     }
 

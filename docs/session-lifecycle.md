@@ -14,7 +14,9 @@ runtime.compact("chat_1", keepRecentTurns = 2) { earlierContext ->
 
 摘要锚定到一个已完成的 assistant 消息。`SessionTree.activeMessages()` 和 `allEntries()` 保留全部原始消息；`modelMessagesThrough()` 只在模型视图中用当前分支最深的摘要替换它覆盖的前缀。切回摘要锚点之前的分支时不会带上该摘要。下一次摘要的输入包含上一份摘要和新增的原始消息，便于递进压缩。Chat Completions 适配器将摘要作为 system 上下文发送，LiteRT-LM 将其加入 system instruction。若模型窗口仍不足，`ContextWindowLimiter` 会优先保留当前用户轮次，并按可用预算截短摘要。
 
-SDK 不自行选择摘要模型，也不在每次运行后隐式调用模型；宿主可根据实际上下文窗口、用量和设备成本决定触发时机。摘要来自模型时，宿主应检查其内容是否足以保留未完成任务和用户约束。
+SDK 不自行选择摘要模型，默认也不自动生成摘要；宿主可根据实际上下文窗口、用量和设备成本决定触发时机。摘要来自模型时，宿主应检查其内容是否足以保留未完成任务和用户约束。
+
+需要自动摘要的宿主可向 `AgentRuntime` 传入 `AutoCompaction(triggerTokens, summarizer, keepRecentTurns)`。运行时在每次模型请求前估算消息、工具定义和输出预留量，达到宿主设定的预算后，尝试摘要已完成的较早轮次。摘要持久化失败时继续执行，并在配置了上下文窗口时用输入裁剪兜底。`triggerTokens` 是宿主资源预算，不代表模型架构的最大上下文长度。
 
 ## 模型用量
 

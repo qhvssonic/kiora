@@ -16,10 +16,12 @@ interface A2aPeer {
     suspend fun continueTask(taskId: String, instruction: String): RemoteTask
     suspend fun send(message: A2aUserMessage): RemoteTask {
         require(message.files.isEmpty()) { "This A2A peer does not support inline files" }
+        require(message.contextId == null) { "This A2A peer does not support conversation context" }
         return send(message.text)
     }
     suspend fun continueTask(taskId: String, message: A2aUserMessage): RemoteTask {
         require(message.files.isEmpty()) { "This A2A peer does not support inline files" }
+        require(message.contextId == null) { "This A2A peer does not support conversation context" }
         return continueTask(taskId, message.text)
     }
     suspend fun getTask(taskId: String): RemoteTask
@@ -34,6 +36,7 @@ data class RemoteTask(
     val id: String,
     val state: RemoteTaskState,
     val output: String? = null,
+    val contextId: String? = null,
 )
 
 /** The agent may delegate a task to a peer while keeping its own local session. */
@@ -116,7 +119,7 @@ class A2aDelegateTool(
                 "taskId" to JsonPrimitive(task.id),
                 "state" to JsonPrimitive(task.state.name),
                 "output" to JsonPrimitive(task.output.orEmpty()),
-            )),
+            ) + listOfNotNull(task.contextId?.let { "contextId" to JsonPrimitive(it) })),
             attention = attention,
         )
 }
@@ -125,6 +128,7 @@ internal val taskOutputSchema = JsonObject(mapOf(
     "type" to JsonPrimitive("object"),
     "properties" to JsonObject(mapOf(
         "taskId" to JsonObject(mapOf("type" to JsonPrimitive("string"))),
+        "contextId" to JsonObject(mapOf("type" to JsonPrimitive("string"))),
         "state" to JsonObject(mapOf("type" to JsonPrimitive("string"))),
         "output" to JsonObject(mapOf("type" to JsonPrimitive("string"))),
     )),
