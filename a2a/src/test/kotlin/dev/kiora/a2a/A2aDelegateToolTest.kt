@@ -13,6 +13,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class A2aDelegateToolTest {
     @Test
@@ -144,23 +145,86 @@ class A2aDelegateToolTest {
             override suspend fun cancelTask(taskId: String) = Unit
         }
         val skill = A2aSkillTool(peer, "desktop", A2aSkill("send", "Send", "", inputModes = listOf("*/*")),
-            "a2a_send", fileLoader = { error("not used") }, requireFileSource = true)
+            "a2a_send", fileLoader = { error("Remote follow-up must not load a local file") },
+            resultSender = { message, _ ->
+                assertEquals(emptyList<A2aInlineFile>(), message.files)
+                ToolOutput("renamed")
+            }, requireFileSource = true)
         val base = mapOf("instruction" to JsonPrimitive("send the file"))
 
         assertEquals("本机文件必须通过 files 参数附上，不能只写文件名",
             skill.validateArguments(JsonObject(base + ("fileSource" to JsonPrimitive("local")))))
         assertEquals(null, skill.validateArguments(JsonObject(base +
             ("fileSource" to JsonPrimitive("remote")))))
-        assertEquals("已附上的本机文件需要将 fileSource 设为 local",
-            skill.validateArguments(JsonObject(base + mapOf(
-                "fileSource" to JsonPrimitive("remote"),
-                "files" to JsonArray(listOf(JsonPrimitive("workspace:work_document.txt"))),
-            ))))
+        val remoteFollowUp = JsonObject(base + mapOf(
+            "fileSource" to JsonPrimitive("remote"),
+            "files" to JsonArray(listOf(JsonPrimitive("workspace:work_document.txt"))),
+        ))
+        assertEquals(null, skill.validateArguments(remoteFollowUp))
+        assertEquals(null, skill.effectiveArguments(remoteFollowUp)["files"])
+        assertEquals("renamed", skill.executeResult(remoteFollowUp).text)
         assertEquals(null, skill.validateArguments(JsonObject(base + mapOf(
             "fileSource" to JsonPrimitive("local"),
             "files" to JsonArray(listOf(JsonPrimitive("workspace:work_document.txt"))),
         ))))
         assertEquals(true, skill.definition.parameters.getValue("required").jsonArray
+            .any { it.jsonPrimitive.content == "fileSource" })
+    }
+
+    @Test
+    fun `host workflow validation runs before generic file source validation`() = runBlocking {
+        val peer = object : A2aPeer {
+            override suspend fun send(instruction: String) = error("not used")
+            override suspend fun continueTask(taskId: String, instruction: String) = error("not used")
+            override suspend fun getTask(taskId: String) = error("not used")
+            override suspend fun cancelTask(taskId: String) = Unit
+        }
+        val skill = A2aSkillTool(peer, "desktop", A2aSkill("send", "Send", "",
+            inputModes = listOf("*/*")), "a2a_send", fileLoader = { emptyList() },
+            requireFileSource = true, argumentValidator = { "write Markdown locally first" })
+        val call = JsonObject(mapOf(
+            "instruction" to JsonPrimitive("save the document"),
+            "fileSource" to JsonPrimitive("local"),
+            "files" to JsonArray(emptyList()),
+        ))
+        assertEquals("write Markdown locally first", skill.validateArguments(call))
+        assertEquals("write Markdown locally first",
+            assertFailsWith<IllegalStateException> { skill.executeResult(call) }.message)
+    }
+
+    @Test
+    fun `host bound files override model file ids and source`() = runBlocking {
+        val peer = object : A2aPeer {
+            override suspend fun send(instruction: String) = error("not used")
+            override suspend fun continueTask(taskId: String, instruction: String) = error("not used")
+            override suspend fun getTask(taskId: String) = error("not used")
+            override suspend fun cancelTask(taskId: String) = Unit
+        }
+        var loadedIds = emptyList<String>()
+        val skill = A2aSkillTool(peer, "desktop", A2aSkill("send", "Send", "", inputModes = listOf("*/*")),
+            "a2a_send", fileLoader = { ids ->
+                loadedIds = ids
+                ids.map { A2aInlineFile("photo.png", "image/png", byteArrayOf(1)) }
+            }, resultSender = { message, _ ->
+                assertEquals(2, message.files.size)
+                ToolOutput("sent")
+            }, fileIdValidator = { ids ->
+                assertEquals(listOf("selected:0", "selected:1"), ids)
+                null
+            }, requireFileSource = true,
+            boundFileIds = { listOf("selected:0", "selected:1") })
+        val call = JsonObject(mapOf(
+            "instruction" to JsonPrimitive("save the photos"),
+            "files" to JsonArray(listOf(JsonPrimitive("wrong-file.png"))),
+            "fileSource" to JsonPrimitive("remote"),
+        ))
+        assertEquals(null, skill.validateArguments(call))
+        assertEquals("sent", skill.executeResult(call).text)
+        assertEquals(listOf("selected:0", "selected:1"), loadedIds)
+        assertEquals(null, skill.validateArguments(JsonObject(mapOf(
+            "instruction" to JsonPrimitive("save the photos"),
+        ))))
+        assertEquals(false, skill.definition.parameters.getValue("required").jsonArray
             .any { it.jsonPrimitive.content == "fileSource" })
     }
 }

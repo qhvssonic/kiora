@@ -11,7 +11,7 @@ flowchart LR
     Runtime --> Policy[ToolAuthorizer]
     Runtime --> Context[ModelContextTransformer]
     Tools --> A2A[A2A Peer]
-    A2A --> Desktop[电脑端 Agent]
+    A2A --> Peer[目标 A2A Agent]
 ```
 
 一次运行的顺序是：写入用户消息 → 投影当前分支的摘要与原始消息 → 转换模型上下文 → 请求模型 → 授权并执行工具 → 写入工具结果 → 再次请求模型。原始消息追加到会话树；`ModelContextTransformer` 只改变发给模型的视图，不删除原始记录。模型可以使用多个工具，但每次运行受轮数、调用次数和总时间限制。用量、摘要与排队指令作为独立元数据持久化。
@@ -50,9 +50,9 @@ Kiora 不把 pi 的终端工具、文件系统权限或 CLI 默认行为直接�
 
 - `core` 和 `a2a` 不依赖 Android UI；宿主可以自由使用 Activity、Compose 或其他界面。
 - `android-attachments` 是可选的 Android 桥接模块，只负责读取系统选择器授权的内容 URI。
-- A2A 发现与文本调用已在真实手机链路验证。内联文件编码有自动化测试，仍需与目标电脑端的文件处理能力做端到端验证。
+- A2A 发现、文本调用与内联文件交付已在真实手机和演示所用 DSH Agent 的链路验证；其他目标 Agent 的文件互操作仍需单独验证。
 - 当前模型适配器支持 Chat Completions 兼容接口的 SSE 文本、函数调用和图片工具结果；LiteRT-LM 也可在工具读取图片后将图片送入本机视觉模型。其他多模态输入仍需扩展，A2A 的 SSE 仍未实现。
 - `android-code-sandbox` 只执行独立进程中的 JavaScript；是否可用取决于设备的 WebView 沙箱支持。其他语言的任意代码执行未实现。
-- 电脑端 Agent Card 中的 `skill` 是能力描述，A2A 协议调用仍通过 `SendMessage`，并非独立的远程函数。
+- 目标 Agent Card 中的 `skill` 是能力描述，A2A 协议调用仍通过 `SendMessage`，并非独立的远程函数。
 
 三项会话能力的接口与恢复规则见 [会话生命周期](session-lifecycle.md)。`kiora-companion` 可按产品界面需要接入工具进度、用量和队列。远端文件下载仍需根据实际服务端响应补齐。

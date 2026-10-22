@@ -25,6 +25,7 @@ class A2aSkillTool(
     private val fileIdValidator: (suspend (List<String>) -> String?)? = null,
     private val argumentValidator: (suspend (JsonObject) -> String?)? = null,
     private val requireFileSource: Boolean = false,
+    private val boundFileIds: (() -> List<String>)? = null,
 ) : ProgressReportingAgentTool, ToolArgumentPrevalidator {
     init { require(messageSender == null || resultSender == null) { "Choose one A2A sender" } }
     private val delegate = A2aDelegateTool(peer)
@@ -47,17 +48,23 @@ class A2aSkillTool(
             }
             append("This tool contacts the remote agent; do not invoke it through a local shell. " +
                 "Set instruction to the task for the remote agent and omit local routing phrases. " +
-                "For a file already at the remote agent, preserve references to earlier remote work. " +
-                "For a file on this device, include its ID in files and refer to the attachment.")
+                "For a file already at the remote agent, preserve references to earlier remote work.")
             if (acceptsForm) append(" Optional form fields are sent as an A2A JSON data part.")
-            if (acceptsFiles) append(" Use files only when the user asks this skill to process host-approved files. " +
-                "A file is transferred only when its host-provided ID appears in the files array; " +
-                "mentioning a filename in instruction does not attach it. " +
-                "File identifiers are defined and validated by the host. Accepted file MIME types: " +
+            if (acceptsFiles) append(" Accepted file MIME types: " +
                 acceptedModes.filter(::isFileMode).joinToString(", ") + ".")
-            if (needsFileSource) append(" Set fileSource to local when this task needs a file from " +
-                "the current device and include its ID in files; use remote when referring to a " +
-                "file already available to the remote agent, or none when no file is involved.")
+            if (acceptsFiles && boundFileIds != null) append(" Files selected in the host for this " +
+                "turn are attached automatically; do not choose their IDs or substitute filenames. " +
+                "For other device files, include a host-provided ID in files.")
+            else if (acceptsFiles) append(" For a file on this device, include its host-provided ID " +
+                "in files. Mentioning a filename in instruction does not attach it.")
+            if (needsFileSource) {
+                append(" Set fileSource to local for device files, remote for files already at " +
+                    "the remote agent, or none when no file is involved.")
+                append(" For remote or none, leave files empty; the host will not upload " +
+                    "model-supplied file IDs for those sources.")
+                if (boundFileIds != null) append(" The host sets local automatically when it " +
+                    "attaches selected files.")
+            }
         },
         parameters = JsonObject(mapOf(
             "type" to JsonPrimitive("object"),
@@ -67,7 +74,9 @@ class A2aSkillTool(
                 if (acceptsForm) put("form", property("object", "Structured form fields described by this skill"))
                 if (acceptsFiles) put("files", JsonObject(mapOf(
                     "type" to JsonPrimitive("array"),
-                    "description" to JsonPrimitive("Host-provided IDs of files to send with this skill"),
+                    "description" to JsonPrimitive(if (boundFileIds == null)
+                        "Host-provided IDs of files to send with this skill"
+                    else "IDs of other device files; current selected attachments are bound by the host"),
                     "items" to JsonObject(mapOf("type" to JsonPrimitive("string"))),
                 )))
                 if (needsFileSource) put("fileSource", JsonObject(mapOf(
@@ -78,7 +87,7 @@ class A2aSkillTool(
                 )))
             }),
             "required" to JsonArray((listOf("instruction") +
-                if (needsFileSource) listOf("fileSource") else emptyList()).map(::JsonPrimitive)),
+                if (needsFileSource && boundFileIds == null) listOf("fileSource") else emptyList()).map(::JsonPrimitive)),
             "additionalProperties" to JsonPrimitive(false),
         )),
         outputSchema = if (messageSender == null) taskOutputSchema else null,
@@ -87,8 +96,9 @@ class A2aSkillTool(
     override suspend fun execute(arguments: JsonObject): String = executeResultInternal(arguments, null).text
 
     override suspend fun validateArguments(arguments: JsonObject): String? {
-        val ids = arguments["files"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
-        return fileSourceError(arguments, ids) ?: argumentValidator?.invoke(arguments)
+        val effective = effectiveArguments(arguments)
+        val ids = effective["files"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
+        return argumentValidator?.invoke(effective) ?: fileSourceError(effective, ids)
             ?: if (ids.isEmpty()) null else fileIdValidator?.invoke(ids)
     }
 
@@ -98,12 +108,14 @@ class A2aSkillTool(
         executeResultInternal(arguments, progress)
 
     private suspend fun executeResultInternal(arguments: JsonObject, progress: ToolProgressSink?): ToolOutput {
+        val effective = effectiveArguments(arguments)
         val instruction = arguments["instruction"]?.jsonPrimitive?.content?.trim().orEmpty()
         require(instruction.isNotBlank()) { "instruction is required" }
         val form = arguments["form"]?.jsonObject
         require(form == null || acceptsForm) { "This skill does not advertise JSON form input" }
-        val ids = arguments["files"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
-        fileSourceError(arguments, ids)?.let { error(it) }
+        val ids = effective["files"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
+        argumentValidator?.invoke(effective)?.let { error(it) }
+        fileSourceError(effective, ids)?.let { error(it) }
         require(ids.isEmpty() || acceptsFiles) { "This skill does not advertise file input" }
         require(ids.size <= 10 && ids.distinct().size == ids.size) { "Choose at most 10 distinct files" }
         val files = if (ids.isEmpty()) emptyList() else requireNotNull(fileLoader)(ids)
@@ -117,6 +129,21 @@ class A2aSkillTool(
         return resultSender?.invoke(message, taskId)
             ?: messageSender?.let { ToolOutput(it(message, taskId)) }
             ?: delegate.executeMessageResult(message, taskId, progress)
+    }
+
+    /** Resolve file provenance before validation, authorization display, and execution. */
+    fun effectiveArguments(arguments: JsonObject): JsonObject {
+        val ids = if (acceptsFiles) boundFileIds?.invoke().orEmpty() else emptyList()
+        if (ids.isNotEmpty()) return JsonObject(arguments + mapOf(
+            "files" to JsonArray(ids.map(::JsonPrimitive)),
+            "fileSource" to JsonPrimitive("local"),
+        ))
+        // A remote file is identified by the remote instruction and conversation context.
+        // Model-supplied local IDs must not turn a remote follow-up into an upload.
+        if (needsFileSource && (arguments["fileSource"] as? JsonPrimitive)?.content in
+            listOf("remote", "none"))
+            return JsonObject(arguments - "files")
+        return arguments
     }
 
     private fun fileSourceError(arguments: JsonObject, ids: List<String>): String? {

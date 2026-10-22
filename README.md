@@ -2,7 +2,7 @@
 
 # Kiora
 
-一个面向 Android 的 Kotlin 智能体框架原型，重点提供**可直接接入智能体流程的 LiteRT-LM、MNN 端侧模型适配器**和**基于 A2A 的跨设备任务协作**，同时支持兼容 Chat Completions 的在线模型。设计借鉴 pi 的小内核思路：模型、工具、会话和外部协议各守一个接口，运行循环只负责把它们串起来。`core` 是纯 Kotlin/JVM，Android 能力按模块接入；具体聊天界面和系统权限由宿主应用负责。当前版本仍处于实验阶段，API 可能调整。
+一个面向 Android 的 Kotlin 智能体框架原型，重点提供**可直接接入智能体流程的 LiteRT-LM、MNN 端侧模型适配器**和**基于 A2A 的 Agent 协作**，同时支持兼容 Chat Completions 的在线模型。设计借鉴 pi 的小内核思路：模型、工具、会话和外部协议各守一个接口，运行循环只负责把它们串起来。`core` 是纯 Kotlin/JVM，Android 能力按模块接入；具体聊天界面和系统权限由宿主应用负责。当前版本仍处于实验阶段，API 可能调整。
 
 许可证：[Apache-2.0](LICENSE)。
 
@@ -15,7 +15,7 @@ flowchart LR
     R --> T[AgentTool<br/>本机工具]
     R --> D[A2aSkillTool<br/>按 Agent Card 能力动态生成]
     D --> C[A2A Peer<br/>HTTP+JSON 或 JSONRPC]
-    C --> PC[电脑端 A2A Agent]
+    C --> Peer[目标 A2A Agent<br/>执行其声明的 skill]
 ```
 
 ## 当前实现
@@ -25,7 +25,7 @@ flowchart LR
 | 模块 | 内容 |
 | --- | --- |
 | `core` | 有界模型/工具循环、取消传播、工具选择与授权、JSON Schema 参数基础校验、上下文窗口裁剪与持久摘要、模型用量记录、运行中指令队列、图片消息与工具结果、事件、分支会话、内存和 JSONL 存储；另提供可选的 `WorkspaceTools` |
-| `a2a` | 电脑端任务委托；从 Agent Card 读取每项 skill 及输入 MIME 类型并生成模型工具；A2A 1.x HTTP+JSON 与 JSONRPC 的发现、发送、续接、轮询、取消、文本、内联文件及 JSON 数据发送，支持 Bearer 凭据和跨任务的 `contextId` |
+| `a2a` | 向其他 Agent 委托任务；从 Agent Card 读取每项 skill 及输入 MIME 类型并生成模型工具；A2A 1.x HTTP+JSON 与 JSONRPC 的发现、发送、续接、轮询、取消、文本、内联文件及 JSON 数据发送，支持 Bearer 凭据和跨任务的 `contextId` |
 | `android-attachments` | 将系统选择器授权的 `content://` 文件或照片安全地读成有大小上限的 A2A 附件 |
 | `android-storage-tools` | 基于 Android SAF 持久授权的目录与单张照片工具：浏览、搜索、查看信息、读取文本、复制、移动、重命名、删除；宿主提供授权 URI 清单 |
 | `android-code-sandbox` | 在 Android 独立进程中执行受限 JavaScript；可选安装 |
@@ -42,7 +42,7 @@ flowchart LR
 | `android-demo` | Android 聊天界面、离线模拟模式、模型与 A2A 配置、工具授权弹窗、会话恢复 |
 | `sample` | 不依赖网络的 JVM 命令行演示：智能体将任务委托给模拟电脑端 |
 
-`ModelPort` 可由宿主应用自行实现；`model-chat` 提供 Chat Completions 兼容适配器。A2A 客户端支持文本和总计 10 MiB 以内的内联文件发送，以及同步请求/轮询；目前不包含 A2A SSE、远端文件下载、推送通知或完整 A2A 服务端。电脑端需要自行提供符合 A2A 1.x HTTP+JSON 或 JSONRPC 的服务，普通 CLI 入口不能直接当作 A2A 服务。
+`ModelPort` 可由宿主应用自行实现；`model-chat` 提供 Chat Completions 兼容适配器。A2A 客户端支持文本和总计 10 MiB 以内的内联文件发送，以及同步请求/轮询；目前不包含 A2A SSE、远端文件下载、推送通知或完整 A2A 服务端。目标 Agent 需要提供手机可访问、符合 A2A 1.x HTTP+JSON 或 JSONRPC 的服务，普通 CLI 入口不能直接当作 A2A 服务。
 
 首次委托可不传 `contextId`，由远端在 Task 中返回；宿主按本地会话和远端连接保存该值，下一次新任务通过 `A2aUserMessage.contextId` 传回。`taskId` 仅用于继续同一个未完成任务，不能替代跨任务的会话上下文。
 
@@ -136,11 +136,11 @@ val result = runtime.run(sessionId = "chat_1", userText = "请电脑端整理这
 
 `A2aDelegateTool` 在电脑端要求补充信息时，将任务 ID 和问题返回给模型；下一次调用带上 `taskId` 即可继续同一任务。远端要求授权时也会返回任务 ID 和说明，由宿主应用处理授权流程。
 
-Agent Card 中每项 skill 都生成自己的模型工具。SDK 优先使用该 skill 的 `inputModes`，缺省时使用 Agent Card 的 `defaultInputModes`。有效输入模式声明 `application/json` 时，该工具提供可选 `form` 对象并发送 A2A `data` Part；声明文件 MIME 类型（如 `application/pdf` 或 `image/*`）且宿主向 `skillTools(fileLoader = …)` 提供文件读取回调时，工具才提供 `files` 参数并发送 `raw` Part。文件 ID 由宿主分配和核验，不接受模型提交任意 Android URI。A2A 标准的 Agent Card 并不定义通用表单字段 Schema；电脑端需要在 skill 描述中说明字段，或与宿主约定额外的 Schema。只声明文本输入的 skill 不会获得文件上传参数。具体流程见 [A2A 附件说明](docs/attachments.md)。
+Agent Card 中每项 skill 都生成自己的模型工具。SDK 优先使用该 skill 的 `inputModes`，缺省时使用 Agent Card 的 `defaultInputModes`。有效输入模式声明 `application/json` 时，该工具提供可选 `form` 对象并发送 A2A `data` Part；声明文件 MIME 类型（如 `application/pdf` 或 `image/*`）且宿主向 `skillTools(fileLoader = …)` 提供文件读取回调时，工具才提供 `files` 参数并发送 `raw` Part。文件 ID 由宿主分配和核验，不接受模型提交任意 Android URI。A2A 标准的 Agent Card 并不定义通用表单字段 Schema；目标 Agent 需要在 skill 描述中说明字段，或与宿主约定额外的 Schema。只声明文本输入的 skill 不会获得文件上传参数。具体流程见 [A2A 附件说明](docs/attachments.md)。
 
 多提供商切换、增量事件和代码沙箱的 SDK 接入示例见 [模型与沙箱说明](docs/models-streaming-sandbox.md)。
 
-需要发送用户选择的文件或照片时，可在 Android 宿主读取获授权的内容 URI，然后调用 `connection.peer.send(A2aUserMessage("请处理附件", listOf(A2aInlineFile("photo.jpg", "image/jpeg", bytes))))`。此接口使用 A2A 1.0 `raw` Part；电脑端也必须支持附件输入。
+需要发送用户选择的文件或照片时，可在 Android 宿主读取获授权的内容 URI，然后调用 `connection.peer.send(A2aUserMessage("请处理附件", listOf(A2aInlineFile("photo.jpg", "image/jpeg", bytes))))`。此接口使用 A2A 1.0 `raw` Part；目标 Agent 也必须支持附件输入。
 
 ## 设计约束
 

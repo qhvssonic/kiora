@@ -37,6 +37,7 @@ data class A2aAgentConnection(
         fileIdValidator: (suspend (List<String>) -> String?)? = null,
         argumentValidator: (suspend (JsonObject) -> String?)? = null,
         requireFileSource: Boolean = false,
+        boundFileIds: (() -> List<String>)? = null,
     ): List<A2aSkillTool> = skills.mapIndexed { index, skill ->
         val safePrefix = toolNamePrefix.replace(Regex("[^A-Za-z0-9_]"), "_")
             .take(24).ifBlank { "a2a" }
@@ -44,7 +45,7 @@ data class A2aAgentConnection(
             .take(if (safePrefix == "a2a") 48 else 24).ifBlank { "skill" }
         A2aSkillTool(peer, name, skill, "${safePrefix}_${safeId}_${index + 1}",
             skill.inputModes.ifEmpty { defaultInputModes }, fileLoader, messageSender, resultSender,
-            fileIdValidator, argumentValidator, requireFileSource)
+            fileIdValidator, argumentValidator, requireFileSource, boundFileIds)
     }
 }
 
