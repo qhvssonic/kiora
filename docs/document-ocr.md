@@ -19,7 +19,7 @@ MlKitChineseOcr().use { ocr ->
 
 Paddle 适配器默认把检测模型输入长边限制到 1536 像素，可通过 `PaddleDocumentOcr.create(context, maxDetectionSide = ...)` 调整。它仍从最多 4096 像素的解码原图裁切文字供识别。两张 3072×4080 的实拍照片使用官方默认 4000 像素检测上限时，Android 日志均记录检测阶段约 144 MB 的数组分配触发 `OutOfMemoryError`。1536 像素上限使同类检测张量约为 20 MB；在 V2509A 的 Companion 0.1.35 中，两张原照片的只读复测均成功，各识别出 17 行。尚未人工评估这些行的准确率。
 
-Companion 同时包含 SenseVoice 时，两个上游 AAR 的 `libonnxruntime.so` 需要不同的符号版本。Companion 通过 [本地打包脚本](../../kiora-companion/scripts/install-onnxruntime-coexist.py) 给 OCR 的运行库改名并更新 ELF 链接；语音库保留原名。0.1.36 已在同一手机测试进程中依次运行实拍 Paddle OCR 和 SenseVoice；0.1.38 移除 Companion 的 ML Kit 依赖后仍保留这项兼容处理。此处理属于宿主打包层，SDK 的独立 Paddle 适配器仍使用官方 ONNX Runtime 依赖。
+Companion 同时包含 SenseVoice 时，两个上游 AAR 原本要求不同的 ONNX Runtime 符号版本。Companion 通过[本地打包脚本](../../kiora-companion/scripts/install-onnxruntime-shared.py)将 OCR 的官方 1.28.0 Java/JNI 桥接库适配到 sherpa-onnx 1.13.8 携带的 ONNX Runtime 1.28.2，移除 OCR AAR 内重复的原生运行库。合并版的独立预览包已在同一手机进程中通过 OCR → SenseVoice → OCR 测试。此处理属于宿主打包层，SDK 的独立 Paddle 适配器仍使用官方 ONNX Runtime 依赖。
 
 2026-10-20 的初始基线验证：V2509A（Android 16）在飞行模式下通过了 SDK 的印刷中文识别测试；Companion 导入一张四行合成中文测试页，识别出四行，其中“编号”和“检查”各有一字误识。此样张只验证手机链路，不能代表实拍文档准确率。随后两张真实照片触发上述 Paddle 内存错误，修复后均能完成识别；尚未对实拍文档的识别准确率评分。
 
