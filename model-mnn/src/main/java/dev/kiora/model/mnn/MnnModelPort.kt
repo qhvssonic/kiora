@@ -229,19 +229,25 @@ class MnnModelPort(
 
     private suspend fun ensureLoaded(): Long {
         check(!closed) { "MNN model is closed" }
-        if (handle == 0L) handle = withContext(Dispatchers.Default) {
-            MnnNativeBridge.load(configFile.absolutePath)
+        if (handle == 0L) withContext(NonCancellable + Dispatchers.Default) {
+            // Retain the handle even if the caller is cancelled as native loading completes.
+            handle = MnnNativeBridge.load(configFile.absolutePath)
         }
         return handle
     }
 
-    suspend fun close() = lock.withLock {
-        if (closed) return@withLock
-        closed = true
-        val old = handle
-        handle = 0L
-        if (old != 0L) withContext(Dispatchers.Default) { MnnNativeBridge.release(old) }
-        worker.shutdown()
+    suspend fun close() = withContext(NonCancellable) {
+        lock.withLock {
+            if (closed) return@withLock
+            closed = true
+            val old = handle
+            handle = 0L
+            try {
+                if (old != 0L) withContext(Dispatchers.Default) { MnnNativeBridge.release(old) }
+            } finally {
+                worker.shutdown()
+            }
+        }
     }
 }
 

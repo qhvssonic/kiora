@@ -22,6 +22,7 @@ import java.util.UUID
 import java.util.Base64
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -223,12 +224,18 @@ class LiteRtModelPort(
     }
 
     /** Waits for any active inference before releasing the native engine. */
-    suspend fun close() = lock.withLock {
-        closed = true
-        pendingByCallId.values.toSet().forEach { it.conversation.close() }
-        pendingByCallId.clear()
-        val active = engine
-        engine = null
-        if (active != null) withContext(Dispatchers.Default) { active.close() }
+    suspend fun close() = withContext(NonCancellable) {
+        lock.withLock {
+            closed = true
+            val pending = pendingByCallId.values.toSet()
+            pendingByCallId.clear()
+            val active = engine
+            engine = null
+            try {
+                pending.forEach { it.conversation.close() }
+            } finally {
+                if (active != null) withContext(Dispatchers.Default) { active.close() }
+            }
+        }
     }
 }

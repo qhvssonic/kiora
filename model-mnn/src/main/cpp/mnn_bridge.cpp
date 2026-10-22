@@ -110,13 +110,15 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_dev_kiora_model_mnn_MnnNativeBridge_load(JNIEnv* env, jobject, jstring path) {
     if (!path) { fail(env, "MNN config path is missing"); return 0; }
     auto* state = new State(utf8(env, path));
+    bool loaded = false;
     {
         std::lock_guard<std::mutex> lock(state->mutex);
-        if (!reload(*state)) {
-            delete state;
-            fail(env, "MNN could not load the model; check config.json and its companion files");
-            return 0;
-        }
+        loaded = reload(*state);
+    }
+    if (!loaded) {
+        delete state;
+        fail(env, "MNN could not load the model; check config.json and its companion files");
+        return 0;
     }
     return reinterpret_cast<jlong>(state);
 }
