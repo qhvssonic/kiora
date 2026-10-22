@@ -19,7 +19,7 @@ kotlin { jvmToolchain(17) }
 
 dependencies {
     api(project(":core"))
-    implementation("com.google.ai.edge.litertlm:litertlm-android:0.12.0")
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.18.1")
     implementation("com.google.code.gson:gson:2.13.2")
 }
 

@@ -32,6 +32,8 @@ flowchart LR
 | `model-chat` | Chat Completions 兼容端点的多提供商配置、文本与函数工具、图片工具结果、SSE 增量输出 |
 | `model-litert` | Android 端直接运行 `.litertlm` 模型，可选择 CPU/GPU 后端，支持流式文本、可选单图视觉输入与手动工具调用；GPU 可用性取决于设备和模型 |
 | `model-mnn` | Android 进程内运行 MNN 3.6.1 模型目录，支持文本、视觉模型图片输入、流式输出、取消和经 Kiora 授权的工具循环；当前仅打包 arm64-v8a |
+| `embedding` | 独立于聊天模型的纯 Kotlin 嵌入接口与向量比较；检查模型身份及维度，并支持截取后重新归一化 |
+| `embedding-mediapipe` | 可选 Android EmbeddingGemma 2 适配器，通过 MediaPipe Universal Embedder 从应用私有目录加载 `.litertlm`，生成文字和图片的向量；模型权重需另行导入 |
 | `speech` | 纯 Kotlin 的短音频转写接口，与智能体工具调用分离 |
 | `speech-sherpa-onnx` | 可选 Android 端 SenseVoice Small int8 非流式识别适配器，需另备 sherpa-onnx AAR 与模型文件 |
 | `document-ocr` | 纯 Kotlin 的单页 OCR 契约，返回原文、逐行文字和位置 |
@@ -43,6 +45,8 @@ flowchart LR
 `ModelPort` 可由宿主应用自行实现；`model-chat` 提供 Chat Completions 兼容适配器。A2A 客户端支持文本和总计 10 MiB 以内的内联文件发送，以及同步请求/轮询；目前不包含 A2A SSE、远端文件下载、推送通知或完整 A2A 服务端。电脑端需要自行提供符合 A2A 1.x HTTP+JSON 或 JSONRPC 的服务，普通 CLI 入口不能直接当作 A2A 服务。
 
 首次委托可不传 `contextId`，由远端在 Task 中返回；宿主按本地会话和远端连接保存该值，下一次新任务通过 `A2aUserMessage.contextId` 传回。`taskId` 仅用于继续同一个未完成任务，不能替代跨任务的会话上下文。
+
+EmbeddingGemma 2 的 SDK 用法与 Android 依赖边界见 [嵌入模型接入说明](docs/embeddinggemma2-integration.md)。嵌入适配器不属于 `AgentRuntime` 的聊天模型；加入宿主前需验证 MediaPipe 带来的 LiteRT-LM 版本升级对现有聊天模型的影响。
 
 拟演示的纸质文档流程由 SDK 能力和宿主应用共同组成：`document-ocr` 契约及可选的 `document-ocr-paddle` 适配器负责单页识别，`WorkspaceTools` 可供智能体写入 Markdown，`a2a` 可通过宿主核验的文件 ID 上传工作区文件。扫描界面、人工校对、工具授权和工作区文件选择由 `kiora-companion` 实现；电脑端处理由另行部署的 A2A Agent 执行。
 
@@ -88,9 +92,10 @@ flowchart LR
 ```powershell
 .\gradlew.bat :core:publishToMavenLocal :a2a:publishToMavenLocal :model-chat:publishToMavenLocal :model-mnn:publishToMavenLocal :model-litert:publishToMavenLocal :android-attachments:publishToMavenLocal :android-storage-tools:publishToMavenLocal :android-code-sandbox:publishToMavenLocal
 .\gradlew.bat :document-ocr:publishToMavenLocal :document-ocr-mlkit:publishToMavenLocal :speech:publishToMavenLocal
+.\gradlew.bat :embedding:publishToMavenLocal :embedding-mediapipe:publishToMavenLocal
 ```
 
-在宿主项目的仓库列表中加入 `mavenLocal()`，然后按需引用 `dev.kiora:kiora-core:0.3.0-SNAPSHOT`、`dev.kiora:kiora-a2a:0.3.0-SNAPSHOT`、`dev.kiora:kiora-model-chat:0.3.0-SNAPSHOT`、`dev.kiora:kiora-model-litert:0.3.0-SNAPSHOT`、`dev.kiora:kiora-model-mnn:0.3.0-SNAPSHOT`、`dev.kiora:kiora-android-attachments:0.3.0-SNAPSHOT`、`dev.kiora:kiora-android-storage-tools:0.3.0-SNAPSHOT`、`dev.kiora:kiora-android-code-sandbox:0.3.0-SNAPSHOT`、`dev.kiora:kiora-document-ocr:0.3.0-SNAPSHOT`、`dev.kiora:kiora-document-ocr-mlkit:0.3.0-SNAPSHOT`、`dev.kiora:kiora-speech:0.3.0-SNAPSHOT`。A2A 和模型模块会传递依赖 `core`。`mavenLocal()` 适合本机开发；另一台电脑或 CI 构建宿主应用前，也需要先发布这些 SDK 模块。端侧模型用法见 [端侧模型说明](docs/on-device-models.md)；授权目录工具见 [Android 存储工具](docs/android-storage-tools.md)；语音模块的可选依赖与模型准备见 [端侧语音识别](docs/speech-recognition.md)；OCR 的边界、基线对照和可选 Paddle 构建步骤见 [端侧文档 OCR](docs/document-ocr.md)。
+在宿主项目的仓库列表中加入 `mavenLocal()`，然后按需引用 `dev.kiora:kiora-core:0.3.0-SNAPSHOT`、`dev.kiora:kiora-a2a:0.3.0-SNAPSHOT`、`dev.kiora:kiora-model-chat:0.3.0-SNAPSHOT`、`dev.kiora:kiora-model-litert:0.3.0-SNAPSHOT`、`dev.kiora:kiora-model-mnn:0.3.0-SNAPSHOT`、`dev.kiora:kiora-embedding:0.3.0-SNAPSHOT`、`dev.kiora:kiora-embedding-mediapipe:0.3.0-SNAPSHOT`、`dev.kiora:kiora-android-attachments:0.3.0-SNAPSHOT`、`dev.kiora:kiora-android-storage-tools:0.3.0-SNAPSHOT`、`dev.kiora:kiora-android-code-sandbox:0.3.0-SNAPSHOT`、`dev.kiora:kiora-document-ocr:0.3.0-SNAPSHOT`、`dev.kiora:kiora-document-ocr-mlkit:0.3.0-SNAPSHOT`、`dev.kiora:kiora-speech:0.3.0-SNAPSHOT`。A2A 和模型模块会传递依赖 `core`。`mavenLocal()` 适合本机开发；另一台电脑或 CI 构建宿主应用前，也需要先发布这些 SDK 模块。端侧模型用法见 [端侧模型说明](docs/on-device-models.md)；EmbeddingGemma 2 的模型准备与兼容性见 [嵌入模型接入说明](docs/embeddinggemma2-integration.md)；授权目录工具见 [Android 存储工具](docs/android-storage-tools.md)；语音模块的可选依赖与模型准备见 [端侧语音识别](docs/speech-recognition.md)；OCR 的边界、基线对照和可选 Paddle 构建步骤见 [端侧文档 OCR](docs/document-ocr.md)。
 
 Android Studio 打开 `kiora` 目录，选择 `android-demo` 运行。构建后的 APK 位于 `android-demo/build/outputs/apk/debug/android-demo-debug.apk`。这里的 Demo 用于验证 SDK 链路；独立产品应用 `kiora-companion` 在本地开发时位于同级目录 `../kiora-companion`，其设置、相册浏览、拍照和实时 Markdown 排版属于宿主实现，并非 SDK 自动提供。
 

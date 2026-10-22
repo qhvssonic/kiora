@@ -28,6 +28,8 @@ SDK 可先定义 `SpeechRecognitionPort` 和 `SpeechSynthesisPort`，覆盖语�
 
 ## 优先探索：EmbeddingGemma 2 相册检索
 
+具体的模型格式、Android 接口、SDK 边界和验证项见 [EmbeddingGemma 2 接入研究](embeddinggemma2-integration.md)。
+
 Google 于 2026-10-06 发布 EmbeddingGemma 2。它把文本、图片、音频和视频映射到共享的 768 维向量空间；官方资料展示了手机上的端侧图片嵌入与跨模态检索。它适合先做“用自然语言找照片”“找相似照片”“按主题聚合”，不等同于 ASR、TTS，也不应直接驱动自动删除或整理原图。模型在目标 Android 设备上的格式、量化、速度、内存和持续索引耗电仍需实测，不能把文档里的示例设备数据当作所有手机的保证。
 
 建议 SDK 分两层：
