@@ -2,7 +2,7 @@
 
 # Kiora
 
-一个面向 Android 的 Kotlin 智能体框架原型。设计借鉴 pi 的小内核思路：模型、工具、会话和外部协议各守一个接口，运行循环只负责把它们串起来。`core` 是纯 Kotlin/JVM，Android 能力按模块接入；具体聊天界面和系统权限由宿主应用负责。当前版本仍处于实验阶段，API 可能调整。
+一个面向 Android 的 Kotlin 智能体框架原型，重点提供**可直接接入智能体流程的 LiteRT-LM、MNN 端侧模型适配器**和**基于 A2A 的跨设备任务协作**，同时支持兼容 Chat Completions 的在线模型。设计借鉴 pi 的小内核思路：模型、工具、会话和外部协议各守一个接口，运行循环只负责把它们串起来。`core` 是纯 Kotlin/JVM，Android 能力按模块接入；具体聊天界面和系统权限由宿主应用负责。当前版本仍处于实验阶段，API 可能调整。
 
 许可证：[Apache-2.0](LICENSE)。
 
@@ -46,9 +46,9 @@ flowchart LR
 
 首次委托可不传 `contextId`，由远端在 Task 中返回；宿主按本地会话和远端连接保存该值，下一次新任务通过 `A2aUserMessage.contextId` 传回。`taskId` 仅用于继续同一个未完成任务，不能替代跨任务的会话上下文。
 
-EmbeddingGemma 2 的 SDK 用法与 Android 依赖边界见 [嵌入模型接入说明](docs/embeddinggemma2-integration.md)。嵌入适配器不属于 `AgentRuntime` 的聊天模型；加入宿主前需验证 MediaPipe 带来的 LiteRT-LM 版本升级对现有聊天模型的影响。
+EmbeddingGemma 2 的 SDK 用法与 Android 依赖边界见 [嵌入模型接入说明](docs/embeddinggemma2-integration.md)。嵌入适配器不属于 `AgentRuntime` 的聊天模型；Companion 将它用于手机相册本地向量检索。宿主引入 MediaPipe 时仍须核对 LiteRT-LM 依赖版本与目标设备兼容性。
 
-拟演示的纸质文档流程由 SDK 能力和宿主应用共同组成：`document-ocr` 契约及可选的 `document-ocr-paddle` 适配器负责单页识别，`WorkspaceTools` 可供智能体写入 Markdown，`a2a` 可通过宿主核验的文件 ID 上传工作区文件。扫描界面、人工校对、工具授权和工作区文件选择由 `kiora-companion` 实现；电脑端处理由另行部署的 A2A Agent 执行。
+典型的纸质文档流程由 SDK 能力和宿主应用共同组成：`document-ocr` 契约及可选的 `document-ocr-paddle` 适配器逐页识别，`WorkspaceTools` 可供智能体写入 Markdown，`a2a` 可通过宿主核验的文件 ID 上传工作区文件。[Kiora Companion](https://github.com/qhvssonic/kiora-companion) 实现多页扫描、人工校对、工具授权和工作区文件选择；电脑端处理由另行部署的 A2A Agent 执行。此流程展示 SDK 能力如何组合，扫描和产品界面不属于 SDK 内核。
 
 ### 工具与 Android 权限
 
