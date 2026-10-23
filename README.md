@@ -2,6 +2,8 @@
 
 # Kiora
 
+[English](README.en.md) | **简体中文**
+
 一个面向 Android 的 Kotlin 智能体框架原型，重点提供**可直接接入智能体流程的 LiteRT-LM、MNN 端侧模型适配器**和**基于 A2A 的 Agent 协作**，同时支持兼容 Chat Completions 的在线模型。设计借鉴 pi 的小内核思路：模型、工具、会话和外部协议各守一个接口，运行循环只负责把它们串起来。`core` 是纯 Kotlin/JVM，Android 能力按模块接入；具体聊天界面和系统权限由宿主应用负责。当前版本仍处于实验阶段，API 可能调整。
 
 许可证：[Apache-2.0](LICENSE)。
