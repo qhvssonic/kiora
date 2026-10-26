@@ -1,6 +1,6 @@
 # 端侧文档 OCR
 
-Kiora SDK 将 OCR 分为两个可选模块：
+Kiora SDK 将 OCR 分为纯 Kotlin 契约和两个可选 Android 适配器：
 
 - `document-ocr` 是纯 Kotlin 契约。`DocumentOcrPort.recognize(imageBytes)` 返回原文和逐行文本、边界框、可用时的置信度。
 - `document-ocr-mlkit` 是 Android 实现，使用打包进应用的 ML Kit 中文文字识别模型。调用不依赖首次联网下载；图片在本机识别。宿主仍需负责拍照、文件读取、结果校对和保存。

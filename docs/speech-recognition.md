@@ -2,6 +2,8 @@
 
 Kiora SDK 将 ASR 与智能体运行时分开。`speech` 是纯 Kotlin 接口；宿主录制短音频并调用 `SpeechRecognitionPort.transcribe(Pcm16Audio)`，得到 `SpeechTranscript`。转写结果由宿主交给用户核对，再作为普通消息发给 `AgentRuntime`。ASR 不属于工具调用，不经过 `ToolAuthorizer`。
 
+离线 TTS 首版已复用同一 sherpa-onnx 运行库，并由 Companion 接入播放。已实现接口、模型准备和待真机验收项见 [离线语音合成](speech-synthesis.md)。
+
 `speech-sherpa-onnx` 是可选 Android 适配器，使用 sherpa-onnx 1.13.8 与 SenseVoice Small int8 做非流式识别。输入须为 16 kHz、单声道、16 位 PCM。适配器不请求麦克风权限，也不录音、保存音频、自动下载模型或发送网络请求。宿主负责权限、录音时长、取消、模型文件及用户确认。当前 `SpeechTranscript` 保留识别器返回的语言、情绪和事件标签，但聊天只发送用户确认的文本。
 
 ## 依赖与模型
@@ -27,7 +29,7 @@ SenseVoice 模型权重不进入 SDK AAR 或 Companion APK。使用与 sherpa-on
 
 - 当前为一段短录音产生一次最终转写，没有临时字幕、VAD 或常开监听。接口以后可扩展流式事件，而不改变 `AgentRuntime`。
 - `Pcm16Audio` 不拷贝传入数组；调用期间宿主不应修改它。宿主应限制录音长度和并发数量，避免无限制积累 PCM。
-- `SenseVoiceRecognizer` 通过 `close()` 释放本地识别器；同一实例应顺序使用。模型加载和解码可耗时，宿主应在后台协程调用。
+- `SenseVoiceRecognizer` 通过 `close()` 释放本地识别器；同一实例应顺序使用。模型加载和解码可耗时，宿主应在后台协程调用。当前同步 `recognizer.decode()` 没有协程取消直接打断原生推理的实现；取消等待不等于原生解码已经结束，释放和复用必须等待其安全退出。
 - 首轮设备验证应覆盖中文、中英混说、断网、取消、30 秒边界、冷启动时间、内存、延迟和音频路由切换。
 
 2026-10-20 已在 V2509A 上以官方 2024-07-17 int8 模型和中文 `zh.wav` 做过一次真实离线转写，输出“开饭时间早上9点至下午5点。”。模型文件 SHA-256：`model.int8.onnx` 为 `c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51`，`tokens.txt` 为 `f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc`。这只验证了短中文样本；录音质量、不同手机的延迟与耗电仍需实测。

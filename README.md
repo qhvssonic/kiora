@@ -26,7 +26,7 @@ flowchart LR
 
 | 模块 | 内容 |
 | --- | --- |
-| `core` | 有界模型/工具循环、取消传播、工具选择与授权、JSON Schema 参数基础校验、上下文窗口裁剪与持久摘要、模型用量记录、运行中指令队列、图片消息与工具结果、事件、分支会话、内存和 JSONL 存储；另提供可选的 `WorkspaceTools` |
+| `core` | 有界模型/工具循环、取消传播、工具选择与授权、JSON Schema 参数基础校验、宿主结构化工具结果与输出 Schema 校验、等待用户输入/授权状态、上下文窗口裁剪与持久摘要、模型用量记录、运行中指令队列、图片消息与工具结果、事件、分支会话、内存和 JSONL 存储；另提供可选的 `WorkspaceTools` |
 | `a2a` | 向其他 Agent 委托任务；从 Agent Card 读取每项 skill 及输入 MIME 类型并生成模型工具；A2A 1.x HTTP+JSON 与 JSONRPC 的发现、发送、续接、轮询、取消、文本、内联文件及 JSON 数据发送，支持 Bearer 凭据和跨任务的 `contextId` |
 | `android-attachments` | 将系统选择器授权的 `content://` 文件或照片安全地读成有大小上限的 A2A 附件 |
 | `android-storage-tools` | 基于 Android SAF 持久授权的目录与单张照片工具：浏览、搜索、查看信息、读取文本、复制、移动、重命名、删除；宿主提供授权 URI 清单 |
@@ -36,15 +36,20 @@ flowchart LR
 | `model-mnn` | Android 进程内运行 MNN 3.6.1 模型目录，支持文本、视觉模型图片输入、流式输出、取消和经 Kiora 授权的工具循环；当前仅打包 arm64-v8a |
 | `embedding` | 独立于聊天模型的纯 Kotlin 嵌入接口与向量比较；检查模型身份及维度，并支持截取后重新归一化 |
 | `embedding-mediapipe` | 可选 Android EmbeddingGemma 2 适配器，通过 MediaPipe Universal Embedder 从应用私有目录加载 `.litertlm`，生成文字和图片的向量；模型权重需另行导入 |
-| `speech` | 纯 Kotlin 的短音频转写接口，与智能体工具调用分离 |
-| `speech-sherpa-onnx` | 可选 Android 端 SenseVoice Small int8 非流式识别适配器，需另备 sherpa-onnx AAR 与模型文件 |
+| `speech` | 纯 Kotlin 的短音频转写与离线合成契约；PCM、文本长度和取消语义均与 Android UI 解耦 |
+| `speech-sherpa-onnx` | 可选 Android 端 SenseVoice Small int8 识别与 MeloTTS int8 合成适配器，需另备 sherpa-onnx AAR 与各自模型文件 |
+| `speech-tools` | 可选的 `speak_text` 智能体工具；由宿主注入合成加播放实现，复用参数校验和工具授权 |
 | `document-ocr` | 纯 Kotlin 的单页 OCR 契约，返回原文、逐行文字和位置 |
 | `document-ocr-mlkit` | 可选 Android 端 ML Kit 中文打包模型适配器，支持离线识别与 EXIF 方向处理 |
 | `document-ocr-paddle` | 可选 PP-OCRv6 Android 适配器，依赖单独准备的官方 AAR 与 ONNX 模型；默认构建不包含 |
 | `android-demo` | Android 聊天界面、离线模拟模式、模型与 A2A 配置、工具授权弹窗、会话恢复 |
 | `sample` | 不依赖网络的 JVM 命令行演示：智能体将任务委托给模拟电脑端 |
 
+离线 TTS 已接入首版：复用 sherpa-onnx 1.13.8 和 MeloTTS 中文英混合 int8，在 Companion 由用户主动朗读回复，也可经 `speak_text` 工具调用。模型需单独准备和导入；SDK 不提供播放 UI。模型资产、边界与尚待真机验证的指标见 [离线语音合成](docs/speech-synthesis.md)。支持方言的 Fun-ASR-Nano 已列为后续识别候选，尚未接入。
+
 `ModelPort` 可由宿主应用自行实现；`model-chat` 提供 Chat Completions 兼容适配器。A2A 客户端支持文本和总计 10 MiB 以内的内联文件发送，以及同步请求/轮询；目前不包含 A2A SSE、远端文件下载、推送通知或完整 A2A 服务端。目标 Agent 需要提供手机可访问、符合 A2A 1.x HTTP+JSON 或 JSONRPC 的服务，普通 CLI 入口不能直接当作 A2A 服务。
+
+A2A 对端不限于电脑，也可以是服务器、其他设备或业务系统中的 Agent。当前返回 Part 只提取文本，远端 JSON 数据和文件尚未保留为可用产物；停止本地等待不会自动取消远端任务。
 
 首次委托可不传 `contextId`，由远端在 Task 中返回；宿主按本地会话和远端连接保存该值，下一次新任务通过 `A2aUserMessage.contextId` 传回。`taskId` 仅用于继续同一个未完成任务，不能替代跨任务的会话上下文。
 
@@ -93,11 +98,11 @@ EmbeddingGemma 2 的 SDK 用法与 Android 依赖边界见 [嵌入模型接入�
 
 ```powershell
 .\gradlew.bat :core:publishToMavenLocal :a2a:publishToMavenLocal :model-chat:publishToMavenLocal :model-mnn:publishToMavenLocal :model-litert:publishToMavenLocal :android-attachments:publishToMavenLocal :android-storage-tools:publishToMavenLocal :android-code-sandbox:publishToMavenLocal
-.\gradlew.bat :document-ocr:publishToMavenLocal :document-ocr-mlkit:publishToMavenLocal :speech:publishToMavenLocal
+.\gradlew.bat :document-ocr:publishToMavenLocal :document-ocr-mlkit:publishToMavenLocal :speech:publishToMavenLocal :speech-tools:publishToMavenLocal
 .\gradlew.bat :embedding:publishToMavenLocal :embedding-mediapipe:publishToMavenLocal
 ```
 
-在宿主项目的仓库列表中加入 `mavenLocal()`，然后按需引用 `dev.kiora:kiora-core:0.3.0-SNAPSHOT`、`dev.kiora:kiora-a2a:0.3.0-SNAPSHOT`、`dev.kiora:kiora-model-chat:0.3.0-SNAPSHOT`、`dev.kiora:kiora-model-litert:0.3.0-SNAPSHOT`、`dev.kiora:kiora-model-mnn:0.3.0-SNAPSHOT`、`dev.kiora:kiora-embedding:0.3.0-SNAPSHOT`、`dev.kiora:kiora-embedding-mediapipe:0.3.0-SNAPSHOT`、`dev.kiora:kiora-android-attachments:0.3.0-SNAPSHOT`、`dev.kiora:kiora-android-storage-tools:0.3.0-SNAPSHOT`、`dev.kiora:kiora-android-code-sandbox:0.3.0-SNAPSHOT`、`dev.kiora:kiora-document-ocr:0.3.0-SNAPSHOT`、`dev.kiora:kiora-document-ocr-mlkit:0.3.0-SNAPSHOT`、`dev.kiora:kiora-speech:0.3.0-SNAPSHOT`。A2A 和模型模块会传递依赖 `core`。`mavenLocal()` 适合本机开发；另一台电脑或 CI 构建宿主应用前，也需要先发布这些 SDK 模块。端侧模型用法见 [端侧模型说明](docs/on-device-models.md)；EmbeddingGemma 2 的模型准备与兼容性见 [嵌入模型接入说明](docs/embeddinggemma2-integration.md)；授权目录工具见 [Android 存储工具](docs/android-storage-tools.md)；语音模块的可选依赖与模型准备见 [端侧语音识别](docs/speech-recognition.md)；OCR 的边界、基线对照和可选 Paddle 构建步骤见 [端侧文档 OCR](docs/document-ocr.md)。
+在宿主项目的仓库列表中加入 `mavenLocal()`，然后按需引用 `dev.kiora:kiora-core:0.3.0-SNAPSHOT`、`dev.kiora:kiora-a2a:0.3.0-SNAPSHOT`、`dev.kiora:kiora-model-chat:0.3.0-SNAPSHOT`、`dev.kiora:kiora-model-litert:0.3.0-SNAPSHOT`、`dev.kiora:kiora-model-mnn:0.3.0-SNAPSHOT`、`dev.kiora:kiora-embedding:0.3.0-SNAPSHOT`、`dev.kiora:kiora-embedding-mediapipe:0.3.0-SNAPSHOT`、`dev.kiora:kiora-android-attachments:0.3.0-SNAPSHOT`、`dev.kiora:kiora-android-storage-tools:0.3.0-SNAPSHOT`、`dev.kiora:kiora-android-code-sandbox:0.3.0-SNAPSHOT`、`dev.kiora:kiora-document-ocr:0.3.0-SNAPSHOT`、`dev.kiora:kiora-document-ocr-mlkit:0.3.0-SNAPSHOT`、`dev.kiora:kiora-speech:0.3.0-SNAPSHOT`、`dev.kiora:kiora-speech-tools:0.3.0-SNAPSHOT`。A2A 和模型模块会传递依赖 `core`。`mavenLocal()` 适合本机开发；另一台电脑或 CI 构建宿主应用前，也需要先发布这些 SDK 模块。端侧模型用法见 [端侧模型说明](docs/on-device-models.md)；EmbeddingGemma 2 的模型准备与兼容性见 [嵌入模型接入说明](docs/embeddinggemma2-integration.md)；授权目录工具见 [Android 存储工具](docs/android-storage-tools.md)；语音模块的可选依赖与模型准备见 [端侧语音识别](docs/speech-recognition.md)和[离线语音合成](docs/speech-synthesis.md)；OCR 的边界、基线对照和可选 Paddle 构建步骤见 [端侧文档 OCR](docs/document-ocr.md)。
 
 Android Studio 打开 `kiora` 目录，选择 `android-demo` 运行。构建后的 APK 位于 `android-demo/build/outputs/apk/debug/android-demo-debug.apk`。这里的 Demo 用于验证 SDK 链路；独立产品应用 `kiora-companion` 在本地开发时位于同级目录 `../kiora-companion`，其设置、相册浏览、拍照和实时 Markdown 排版属于宿主实现，并非 SDK 自动提供。
 

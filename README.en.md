@@ -25,7 +25,7 @@ flowchart LR
 
 | Module | Responsibility |
 | --- | --- |
-| `core` | Bounded model/tool loop, cancellation, active tool selection and authorization, basic JSON Schema argument validation, session branches, persistence, context protection and compaction, usage metadata, queued instructions, images, and runtime events. Optional `WorkspaceTools` are provided separately. |
+| `core` | Bounded model/tool loop, cancellation, active tool selection and authorization, basic JSON Schema argument validation, host-facing structured tool output and output Schema validation, input/authorization attention states, session branches, persistence, context protection and compaction, usage metadata, queued instructions, images, and runtime events. Optional `WorkspaceTools` are provided separately. |
 | `a2a` | A2A 1.x client: Agent Card discovery, skill-to-tool mapping, HTTP+JSON and JSONRPC, task send/poll/resume/cancel, text, JSON data and inline files, Bearer credentials, and cross-task `contextId`. |
 | `android-attachments` | Read authorized Android `content://` files and photos into size-bounded A2A attachments. |
 | `android-storage-tools` | Tools for files in Storage Access Framework (SAF) directories explicitly authorized by the host. |
@@ -34,11 +34,14 @@ flowchart LR
 | `model-litert` | Load `.litertlm` models directly on Android, with CPU/GPU selection, streamed text, optional single-image input, and tool calls. GPU support depends on the model and device. |
 | `model-mnn` | Load an MNN model directory inside the Android app process. Supports text, configured vision models, streaming, cancellation, and Kiora's authorized tool loop. Currently packages `arm64-v8a` only. |
 | `embedding` / `embedding-mediapipe` | Embedding interface, vector checks and similarity; optional EmbeddingGemma 2 text/image adapter using MediaPipe Universal Embedder. |
-| `speech` / `speech-sherpa-onnx` | Short-audio transcription interface; optional on-device SenseVoice Small int8 adapter. |
+| `speech` / `speech-sherpa-onnx` | UI-independent transcription and synthesis contracts; optional SenseVoice Small int8 ASR and MeloTTS int8 Android adapters. |
+| `speech-tools` | Optional `speak_text` agent tool with host-supplied synthesis and playback. |
 | `document-ocr` / `document-ocr-mlkit` / `document-ocr-paddle` | OCR contract and optional Android ML Kit or PP-OCRv6 adapters. |
 | `sample` / `android-demo` | Offline JVM example and Android app for exercising model, tool, authorization, and A2A paths. |
 
 The [Kiora Companion](https://github.com/qhvssonic/kiora-companion) app uses these modules in a fuller Android product. Its scanning, gallery, settings, and chat UI are host features, not automatic SDK features.
+
+The first offline TTS path is implemented with sherpa-onnx 1.13.8 and the Chinese/English MeloTTS int8 model. Companion provides manual reply playback and an authorized `speak_text` tool; model assets are imported separately. Device performance and audio behavior still require validation. See the [offline synthesis guide](docs/speech-synthesis.md). Dialect-focused Fun-ASR-Nano remains a future ASR candidate.
 
 ## How a run works
 
@@ -75,6 +78,8 @@ For the first remote task, the host may omit `contextId`. If the target returns 
 
 The client currently supports A2A 1.x HTTP+JSON and JSONRPC, polling, cancellation, and inline attachments totaling at most **10 MiB**. It does not provide A2A SSE, remote-file downloads, push notifications, large-file streaming, or a full A2A server. The remote agent must actually implement the skill it advertises, and the network path must be reachable. Authorization controls transmission from the phone; once an attachment reaches the recipient, that agent can read it according to its own task and permissions.
 
+The current response decoder extracts text parts only; remote JSON and file parts are not retained as usable artifacts. Canceling local waiting does not automatically call the peer's task cancellation endpoint.
+
 ## Build and try the SDK
 
 Requirements: **JDK 17** and, for the default build, an Android SDK with `compileSdk 35`. Configure `sdk.dir` in `local.properties` or use the usual Android SDK environment variables. The repository includes a Gradle Wrapper:
@@ -91,7 +96,7 @@ Publish the SDK modules needed by another local Android project before building 
 
 ```powershell
 .\gradlew.bat :core:publishToMavenLocal :a2a:publishToMavenLocal :model-chat:publishToMavenLocal :model-mnn:publishToMavenLocal :model-litert:publishToMavenLocal :android-attachments:publishToMavenLocal :android-storage-tools:publishToMavenLocal :android-code-sandbox:publishToMavenLocal
-.\gradlew.bat :document-ocr:publishToMavenLocal :document-ocr-mlkit:publishToMavenLocal :speech:publishToMavenLocal
+.\gradlew.bat :document-ocr:publishToMavenLocal :document-ocr-mlkit:publishToMavenLocal :speech:publishToMavenLocal :speech-tools:publishToMavenLocal
 .\gradlew.bat :embedding:publishToMavenLocal :embedding-mediapipe:publishToMavenLocal
 ```
 
