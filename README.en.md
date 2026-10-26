@@ -34,14 +34,17 @@ flowchart LR
 | `model-litert` | Load `.litertlm` models directly on Android, with CPU/GPU selection, streamed text, optional single-image input, and tool calls. GPU support depends on the model and device. |
 | `model-mnn` | Load an MNN model directory inside the Android app process. Supports text, configured vision models, streaming, cancellation, and Kiora's authorized tool loop. Currently packages `arm64-v8a` only. |
 | `embedding` / `embedding-mediapipe` | Embedding interface, vector checks and similarity; optional EmbeddingGemma 2 text/image adapter using MediaPipe Universal Embedder. |
-| `speech` / `speech-sherpa-onnx` | UI-independent transcription and synthesis contracts; optional SenseVoice Small int8 ASR and MeloTTS int8 Android adapters. |
+| `face` / `face-onnx` | UI-independent face contracts, multi-sample enrollment, host-supplied storage and 1:N matching; optional Android SCRFD detection, five-point alignment and MobileFaceNet features. |
+| `speech` / `speech-sherpa-onnx` | UI-independent transcription and synthesis contracts; optional SenseVoice Small int8 ASR and MeloTTS FP32/int8 Android adapters. |
 | `speech-tools` | Optional `speak_text` agent tool with host-supplied synthesis and playback. |
 | `document-ocr` / `document-ocr-mlkit` / `document-ocr-paddle` | OCR contract and optional Android ML Kit or PP-OCRv6 adapters. |
 | `sample` / `android-demo` | Offline JVM example and Android app for exercising model, tool, authorization, and A2A paths. |
 
 The [Kiora Companion](https://github.com/qhvssonic/kiora-companion) app uses these modules in a fuller Android product. Its scanning, gallery, settings, and chat UI are host features, not automatic SDK features.
 
-The first offline TTS path is implemented with sherpa-onnx 1.13.8 and the Chinese/English MeloTTS int8 model. Companion provides manual reply playback and an authorized `speak_text` tool; model assets are imported separately. Device performance and audio behavior still require validation. See the [offline synthesis guide](docs/speech-synthesis.md). Dialect-focused Fun-ASR-Nano remains a future ASR candidate.
+Offline TTS uses sherpa-onnx 1.13.8 and Chinese/English MeloTTS. FP32 is recommended after target-device measurements; int8 import remains supported. Companion provides manual reply playback and stop controls without registering `speak_text`; other hosts may opt into `speech-tools`. Model assets are imported separately. See the [offline synthesis guide](docs/speech-synthesis.md) for device results and remaining validation. Dialect-focused Fun-ASR-Nano remains a future ASR candidate.
+
+Local face recognition uses one host-supplied ONNX Runtime Android dependency and separately imported weights. Companion 0.1.103 adds enrollment, live preview scans that query automatically, and an incremental photo index. Preview frames stay in memory and templates remain in the app's private database. No face tools or uploads are enabled automatically. See [integration and limitations](docs/face-recognition.md), including model licensing and uncalibrated matching thresholds.
 
 ## How a run works
 

@@ -18,9 +18,9 @@ pluginManagement {
 
 rootProject.name = "kiora"
 
-include(":core", ":a2a", ":model-chat", ":speech", ":speech-tools", ":document-ocr", ":embedding", ":sample")
+include(":core", ":a2a", ":model-chat", ":speech", ":speech-tools", ":document-ocr", ":embedding", ":face", ":sample")
 if (!providers.gradleProperty("skipAndroid").map(String::toBoolean).getOrElse(false)) {
-    include(":android-attachments", ":android-storage-tools", ":android-code-sandbox", ":android-demo", ":model-litert", ":model-mnn", ":document-ocr-mlkit", ":embedding-mediapipe")
+    include(":android-attachments", ":android-storage-tools", ":android-code-sandbox", ":android-demo", ":model-litert", ":model-mnn", ":document-ocr-mlkit", ":embedding-mediapipe", ":face-onnx")
     if (providers.gradleProperty("sherpaLocalRepo").isPresent) include(":speech-sherpa-onnx")
     if (providers.gradleProperty("paddleLocalRepo").isPresent) include(":document-ocr-paddle")
 }

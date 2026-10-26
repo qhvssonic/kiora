@@ -35,9 +35,11 @@ flowchart LR
 | `model-litert` | Android 端直接运行 `.litertlm` 模型，可选择 CPU/GPU 后端，支持流式文本、可选单图视觉输入与手动工具调用；GPU 可用性取决于设备和模型 |
 | `model-mnn` | Android 进程内运行 MNN 3.6.1 模型目录，支持文本、视觉模型图片输入、流式输出、取消和经 Kiora 授权的工具循环；当前仅打包 arm64-v8a |
 | `embedding` | 独立于聊天模型的纯 Kotlin 嵌入接口与向量比较；检查模型身份及维度，并支持截取后重新归一化 |
+| `face` | 纯 Kotlin 人脸接口、质量状态、多样本注册、模型隔离与 1:N 匹配；宿主注入持久化 |
+| `face-onnx` | 可选 Android InsightFace buffalo_sc 适配器：SCRFD 检测、五点对齐和 MobileFaceNet 特征；宿主提供统一 ONNX Runtime，权重独立导入 |
 | `embedding-mediapipe` | 可选 Android EmbeddingGemma 2 适配器，通过 MediaPipe Universal Embedder 从应用私有目录加载 `.litertlm`，生成文字和图片的向量；模型权重需另行导入 |
 | `speech` | 纯 Kotlin 的短音频转写与离线合成契约；PCM、文本长度和取消语义均与 Android UI 解耦 |
-| `speech-sherpa-onnx` | 可选 Android 端 SenseVoice Small int8 识别与 MeloTTS int8 合成适配器，需另备 sherpa-onnx AAR 与各自模型文件 |
+| `speech-sherpa-onnx` | 可选 Android 端 SenseVoice Small int8 识别与 MeloTTS FP32/int8 合成适配器，需另备 sherpa-onnx AAR 与各自模型文件 |
 | `speech-tools` | 可选的 `speak_text` 智能体工具；由宿主注入合成加播放实现，复用参数校验和工具授权 |
 | `document-ocr` | 纯 Kotlin 的单页 OCR 契约，返回原文、逐行文字和位置 |
 | `document-ocr-mlkit` | 可选 Android 端 ML Kit 中文打包模型适配器，支持离线识别与 EXIF 方向处理 |
@@ -45,7 +47,11 @@ flowchart LR
 | `android-demo` | Android 聊天界面、离线模拟模式、模型与 A2A 配置、工具授权弹窗、会话恢复 |
 | `sample` | 不依赖网络的 JVM 命令行演示：智能体将任务委托给模拟电脑端 |
 
-离线 TTS 已接入首版：复用 sherpa-onnx 1.13.8 和 MeloTTS 中文英混合 int8，在 Companion 由用户主动朗读回复，也可经 `speak_text` 工具调用。模型需单独准备和导入；SDK 不提供播放 UI。模型资产、边界与尚待真机验证的指标见 [离线语音合成](docs/speech-synthesis.md)。支持方言的 Fun-ASR-Nano 已列为后续识别候选，尚未接入。
+离线 TTS 复用 sherpa-onnx 1.13.8 和 MeloTTS 中英模型，目标手机实测后推荐 FP32，同时保留 int8 导入。Companion 由用户点击回复扬声器图标启动或停止朗读，不注册 `speak_text`；SDK 的 `speech-tools` 仍供其他宿主按需接入。模型需单独准备和导入；SDK 不提供播放 UI。模型资产、播放实现与真机记录见 [离线语音合成](docs/speech-synthesis.md)。支持方言的 Fun-ASR-Nano 已列为后续识别候选，尚未接入。
+
+本地人脸由 `face` 提供注册、存储契约和 1:N 匹配，由 `face-onnx` 提供检测、对齐和特征提取。
+Companion 0.1.103 在宿主层实现人员管理、实时扫描自动查询和相册增量索引；预览帧不落盘，
+人员特征保存在应用私有数据库。模型准备、SDK 用法和验证边界见 [人脸接入](docs/face-recognition.md)。
 
 `ModelPort` 可由宿主应用自行实现；`model-chat` 提供 Chat Completions 兼容适配器。A2A 客户端支持文本和总计 10 MiB 以内的内联文件发送，以及同步请求/轮询；目前不包含 A2A SSE、远端文件下载、推送通知或完整 A2A 服务端。目标 Agent 需要提供手机可访问、符合 A2A 1.x HTTP+JSON 或 JSONRPC 的服务，普通 CLI 入口不能直接当作 A2A 服务。
 
@@ -81,6 +87,8 @@ EmbeddingGemma 2 的 SDK 用法与 Android 依赖边界见 [嵌入模型接入�
 长会话可由宿主调用 `AgentRuntime.compact()` 生成分支感知的持久摘要；兼容端点报告的 token 用量可作为会话元数据保存。运行中还可排入 steering 和 follow-up 指令。具体时机、存储要求与恢复语义见 [会话生命周期](docs/session-lifecycle.md)。
 
 宿主也可传入 `AutoCompaction`，按自己的设备资源预算在模型请求前自动调用持久摘要。摘要失败时仍沿用已配置的上下文窗口裁剪保护；自动摘要不会删除原始会话消息。
+
+本地人脸注册、1:N 检索与相册演示的接入、模型许可和验证边界见 [人脸功能](docs/face-recognition.md)。此能力不自动加入智能体工具，也不上传照片或特征。
 
 ## 运行
 
