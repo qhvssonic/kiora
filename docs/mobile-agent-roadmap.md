@@ -10,9 +10,9 @@ Kiora 已有模型、工具、授权、会话树、摘要、用量、运行中�
 
 ## 优先探索：端侧语音交互
 
-首版已实现独立的 `speech` 转写接口、可选 `speech-sherpa-onnx` Android 适配器，以及 Companion 的按键录音与可编辑转写。识别只返回最终文本；临时字幕与 VAD 尚未实现。见 [端侧语音识别](speech-recognition.md)。
+首版已实现独立的 `speech` 转写接口、可选 `speech-sherpa-onnx` Android 适配器，以及 Companion 的按键录音与可编辑转写。SenseVoice 返回整段最终文本；新增流式 Paraformer 可边说边更新输入框，并在停止时收尾。独立 VAD、常开监听和全双工尚未实现。见 [端侧语音识别](speech-recognition.md)。
 
-已接入 **sherpa-onnx 1.13.8 + MeloTTS 中文英混合模型 + Android AudioTrack**，复用现有 sherpa/ONNX Runtime。Companion 默认推荐 FP32、CPU 4 线程，保留 int8 导入支持；支持手动点击图标朗读回复和停止，不向智能体注册 `speak_text`。目标手机长回复播放记录为零缓冲断流；现有按键说话 → SenseVoice 最终转写 → 用户校正 → `AgentRuntime` 可与朗读组成半双工轮次，完整语音交互与多设备指标仍需验收。选型证据、模型资产、接口与验收项见 [离线语音合成](speech-synthesis.md)。真正流式 ASR、VAD 和全双工交互另行评估。
+已接入 **sherpa-onnx 1.13.8 + MeloTTS 中文英混合模型 + Android AudioTrack**，复用现有 sherpa/ONNX Runtime。Companion 默认推荐 FP32、CPU 4 线程，保留 int8 导入支持；支持手动点击图标朗读回复和停止，不向智能体注册 `speak_text`。目标手机长回复播放记录为零缓冲断流；现有按键说话 → SenseVoice 最终转写 → 用户校正 → `AgentRuntime` 可与朗读组成半双工轮次，完整语音交互与多设备指标仍需验收。选型证据、模型资产、接口与验收项见 [离线语音合成](speech-synthesis.md)。流式 ASR 已接入 Paraformer 单遍方案，VAD 和全双工交互另行评估。
 
 SDK 已有 `SpeechRecognitionPort`、`SpeechSynthesisPort`、`MeloTtsSynthesizer` 与独立的 `SpeakTextTool`。音频焦点、蓝牙路由、来电中断、麦克风权限和播放 UI 属于宿主集成。模型回复、工具进度与朗读状态分别呈现；停止音频输出不等于原生推理或远端任务已经取消。
 
@@ -24,7 +24,7 @@ SDK 已有 `SpeechRecognitionPort`、`SpeechSynthesisPort`、`MeloTtsSynthesizer
 
 用户已有 sherpa-onnx + SenseVoice Small int8 的端侧项目经验。建议把这组合作为首版按键说话的验证基线：Android 宿主在获得麦克风权限后录制短语音，使用 VAD 或用户松开按钮确定片段边界，SenseVoice 产出最终文本，用户确认后才提交给 `AgentRuntime`。临时转写不应作为多条用户消息写入会话。现有 sherpa-onnx 的 SenseVoice 适配属于非流式识别；“模拟流式”是对片段反复识别，不等于真正的增量模型。
 
-如果产品要求说话时持续显示稳定的临时字幕，再评估 sherpa-onnx 双遍方案：小型流式 Zipformer 给第一遍反馈，SenseVoice 给片段最终结果。它增加模型体积、内存与集成成本，应由实测收益决定。系统端侧 `SpeechRecognizer` 可作为无需另带模型的备选，但只能在设备报告可用时启用；绝不静默切换到可能联网的普通识别服务。
+2026-10-27 新增流式 Paraformer 中英双语 int8：复用 sherpa-onnx，使用同一麦克风按钮显示可修订的临时文本，结束录音后保留可编辑结果；每次只加载选中的 ASR。暂不采用流式模型加 SenseVoice 的双遍方案，以免同时驻留两份识别权重。独立 VAD、连续会议字幕、自动标点和字词时间戳不在本次范围。系统端侧 `SpeechRecognizer` 可作为无需另带模型的备选，但只能在设备报告可用时启用；绝不静默切换到可能联网的普通识别服务。
 
 同机对比至少记录中文字符错误率、中英混说、数字与专有名词、句尾到最终转写的 P50/P95 延迟、误切句、冷启动时间、峰值内存、APK/模型下载体积、发热和耗电。SenseVoiceSmall 模型权重与 sherpa-onnx 代码的许可证分别核验，第三方 int8 转换包也要核对自身条款。模型文件宜与 SDK AAR 分开分发，并记录版本与校验值。
 
@@ -32,7 +32,7 @@ SDK 已有 `SpeechRecognitionPort`、`SpeechSynthesisPort`、`MeloTtsSynthesizer
 
 ### 已列入计划：Fun-ASR 方言识别集成
 
-**状态：计划中，适配器、模型导入和后端选择均未实现；当前可用 ASR 仍是 SenseVoice。**
+**状态：Fun-ASR-Nano 计划中，其适配器和模型导入尚未实现；当前可用 ASR 是 SenseVoice 与流式 Paraformer，通用后端选择已实现。**
 Fun-ASR 扩展语音转文字能力，MeloTTS 继续负责离线朗读。尚未确定目标方言，但模型与运行库技术验证可以先行，
 方言覆盖范围及默认后端选择要等真实样本评估后再决定。
 

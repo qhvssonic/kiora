@@ -38,8 +38,8 @@ flowchart LR
 | `face` | 纯 Kotlin 人脸接口、质量状态、多样本注册、模型隔离与 1:N 匹配；宿主注入持久化 |
 | `face-onnx` | 可选 Android InsightFace buffalo_sc 适配器：SCRFD 检测、五点对齐和 MobileFaceNet 特征；宿主提供统一 ONNX Runtime，权重独立导入 |
 | `embedding-mediapipe` | 可选 Android EmbeddingGemma 2 适配器，通过 MediaPipe Universal Embedder 从应用私有目录加载 `.litertlm`，生成文字和图片的向量；模型权重需另行导入 |
-| `speech` | 纯 Kotlin 的短音频转写与离线合成契约；PCM、文本长度和取消语义均与 Android UI 解耦 |
-| `speech-sherpa-onnx` | 可选 Android 端 SenseVoice Small int8 识别与 MeloTTS FP32/int8 合成适配器，需另备 sherpa-onnx AAR 与各自模型文件 |
+| `speech` | 纯 Kotlin 的短音频转写、流式识别事件与离线合成契约；PCM、文本长度和取消语义均与 Android UI 解耦 |
+| `speech-sherpa-onnx` | 可选 Android 端 SenseVoice Small int8、流式 Paraformer 中英双语 int8 识别与 MeloTTS FP32/int8 合成适配器，需另备 sherpa-onnx AAR 与各自模型文件 |
 | `speech-tools` | 可选的 `speak_text` 智能体工具；由宿主注入合成加播放实现，复用参数校验和工具授权 |
 | `document-ocr` | 纯 Kotlin 的单页 OCR 契约，返回原文、逐行文字和位置 |
 | `document-ocr-mlkit` | 可选 Android 端 ML Kit 中文打包模型适配器，支持离线识别与 EXIF 方向处理 |
@@ -92,7 +92,7 @@ EmbeddingGemma 2 的 SDK 用法与 Android 依赖边界见 [嵌入模型接入�
 
 ## 后续计划：Fun-ASR 方言语音识别
 
-**状态：已列入集成计划，尚未实现；当前语音识别仍使用 SenseVoice。** Fun-ASR 用于语音转文字，离线朗读继续使用 MeloTTS。
+**状态：已列入集成计划，尚未实现；当前语音识别支持 SenseVoice 和流式 Paraformer；Fun-ASR-Nano 尚未实现。** Fun-ASR 用于语音转文字，离线朗读继续使用 MeloTTS。
 
 - [ ] 以 Fun-ASR-Nano 为候选，固定模型版本，核对 Android 导出包、配套文件和运行库兼容性。
 - [ ] 优先复用现有 sherpa-onnx，为 `SpeechRecognitionPort` 增加按需启用的识别适配器；处理加载、取消、释放与错误状态。

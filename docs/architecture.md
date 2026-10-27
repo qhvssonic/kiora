@@ -66,7 +66,7 @@ Kiora 不把 pi 的终端工具、文件系统权限或 CLI 默认行为直接�
 - 目标 Agent Card 中的 `skill` 是能力描述，A2A 协议调用仍通过 `SendMessage`，并非独立的远程函数。
 - A2A 对端可以是服务器、其他设备或业务系统中的 Agent。当前 `A2aTaskCodec` 只提取返回 Part 的文本，尚未保留远端 JSON 数据和文件产物；能够上传附件不代表能够下载远端生成文件。
 - 本地取消会传播到协程，但不会自动调用远端 `cancelTask()`。通用委托工具有轮询上限；Companion 自行保存部分待续任务和连接上下文，尚无通用持久任务账本。重启后，core 将没有结果的旧工具调用标记为执行状态未知的 `INTERRUPTED`，不自动重放；外部副作用仍需幂等或对账。
-- 辅助推理已有独立的 `SpeechRecognitionPort`、`SpeechSynthesisPort`、`DocumentOcrPort` 和 `EmbeddingPort`。录音、扫描、相册索引及音频播放由宿主组合；ASR、OCR 当前不是默认注册的 Agent 工具。TTS 可通过可选 `speech-tools` 的 `SpeakTextTool` 接入 Agent，sherpa 适配器与宿主播放边界见 [离线语音合成](speech-synthesis.md)。
+- 辅助推理已有独立的 `SpeechRecognitionPort`、`StreamingSpeechRecognitionPort`、`SpeechSynthesisPort`、`DocumentOcrPort` 和 `EmbeddingPort`。流式 ASR 用片段 ID 与修订号区分临时/最终结果，不将临时文本写入 Agent 会话。录音、扫描、相册索引及音频播放由宿主组合；ASR、OCR 当前不是默认注册的 Agent 工具。TTS 可通过可选 `speech-tools` 的 `SpeakTextTool` 接入 Agent，sherpa 适配器与宿主播放边界见 [离线语音合成](speech-synthesis.md)。
 - 同进程聊天模型、嵌入、OCR 与语音的峰值内存需要一起测量。工具顺序执行不代表权重、KV cache 与辅助模型不会同时驻留；等待工具结果的聊天会话不能在未验证重建语义时随意释放。
 - 本地工具结果在当前模型为在线服务时仍可能进入外部模型请求。工具执行授权与模型/A2A 外发策略是不同边界；当前尚无覆盖所有派生文本、图片和摘要的统一外发策略接口。
 

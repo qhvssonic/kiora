@@ -35,7 +35,7 @@ flowchart LR
 | `model-mnn` | Load an MNN model directory inside the Android app process. Supports text, configured vision models, streaming, cancellation, and Kiora's authorized tool loop. Currently packages `arm64-v8a` only. |
 | `embedding` / `embedding-mediapipe` | Embedding interface, vector checks and similarity; optional EmbeddingGemma 2 text/image adapter using MediaPipe Universal Embedder. |
 | `face` / `face-onnx` | UI-independent face contracts, multi-sample enrollment, host-supplied storage and 1:N matching; optional Android SCRFD detection, five-point alignment and MobileFaceNet features. |
-| `speech` / `speech-sherpa-onnx` | UI-independent transcription and synthesis contracts; optional SenseVoice Small int8 ASR and MeloTTS FP32/int8 Android adapters. |
+| `speech` / `speech-sherpa-onnx` | UI-independent transcription and synthesis contracts; optional SenseVoice Small int8, streaming bilingual Paraformer int8 ASR, and MeloTTS FP32/int8 Android adapters. |
 | `speech-tools` | Optional `speak_text` agent tool with host-supplied synthesis and playback. |
 | `document-ocr` / `document-ocr-mlkit` / `document-ocr-paddle` | OCR contract and optional Android ML Kit or PP-OCRv6 adapters. |
 | `sample` / `android-demo` | Offline JVM example and Android app for exercising model, tool, authorization, and A2A paths. |
@@ -48,7 +48,7 @@ Local face recognition uses one host-supplied ONNX Runtime Android dependency an
 
 ## Roadmap: Fun-ASR dialect recognition
 
-**Planned, not implemented. Current ASR uses SenseVoice.** Fun-ASR is for speech-to-text; MeloTTS remains the offline reading backend.
+**Planned, not implemented. Current ASR supports SenseVoice and streaming Paraformer; Fun-ASR-Nano remains unimplemented.** Fun-ASR is for speech-to-text; MeloTTS remains the offline reading backend.
 
 - [ ] Evaluate a pinned Fun-ASR-Nano package and verify Android assets and runtime compatibility.
 - [ ] Prefer the existing sherpa-onnx runtime for an optional `SpeechRecognitionPort` adapter with loading, cancellation, cleanup and error handling.
