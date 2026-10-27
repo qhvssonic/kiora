@@ -46,6 +46,17 @@ Offline TTS uses sherpa-onnx 1.13.8 and Chinese/English MeloTTS. FP32 is recomme
 
 Local face recognition uses one host-supplied ONNX Runtime Android dependency and separately imported weights. Companion 0.1.103 adds enrollment, live preview scans that query automatically, and an incremental photo index. Preview frames stay in memory and templates remain in the app's private database. No face tools or uploads are enabled automatically. See [integration and limitations](docs/face-recognition.md), including model licensing and uncalibrated matching thresholds.
 
+## Roadmap: Fun-ASR dialect recognition
+
+**Planned, not implemented. Current ASR uses SenseVoice.** Fun-ASR is for speech-to-text; MeloTTS remains the offline reading backend.
+
+- [ ] Evaluate a pinned Fun-ASR-Nano package and verify Android assets and runtime compatibility.
+- [ ] Prefer the existing sherpa-onnx runtime for an optional `SpeechRecognitionPort` adapter with loading, cancellation, cleanup and error handling.
+- [ ] Validate offline transcription, peak memory and resource release when alternating with chat and TTS on a real phone.
+- [ ] Collect target-dialect recordings and compare transcription errors, numbers/place names and latency against SenseVoice before deciding the supported scope.
+
+Target dialects are not yet specified; coverage and accuracy are not guaranteed. See the [integration stages and Companion responsibilities](docs/mobile-agent-roadmap.md#fun-asr-plan).
+
 ## How a run works
 
 The host supplies a `ModelPort`, `SessionStore`, enabled `AgentTool`s, and a `ToolAuthorizer`. On each turn, `ActiveToolSelector` chooses which tools are visible to the model. A proposed tool call is checked before authorization and execution; its actual result is stored and returned to the model. A call request is not proof that the operation succeeded. Each run has limits on model turns, tool calls, and elapsed time; cancellation propagates but cannot undo actions already performed.

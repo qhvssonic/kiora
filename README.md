@@ -90,6 +90,17 @@ EmbeddingGemma 2 的 SDK 用法与 Android 依赖边界见 [嵌入模型接入�
 
 本地人脸注册、1:N 检索与相册演示的接入、模型许可和验证边界见 [人脸功能](docs/face-recognition.md)。此能力不自动加入智能体工具，也不上传照片或特征。
 
+## 后续计划：Fun-ASR 方言语音识别
+
+**状态：已列入集成计划，尚未实现；当前语音识别仍使用 SenseVoice。** Fun-ASR 用于语音转文字，离线朗读继续使用 MeloTTS。
+
+- [ ] 以 Fun-ASR-Nano 为候选，固定模型版本，核对 Android 导出包、配套文件和运行库兼容性。
+- [ ] 优先复用现有 sherpa-onnx，为 `SpeechRecognitionPort` 增加按需启用的识别适配器；处理加载、取消、释放与错误状态。
+- [ ] 在真机验证模型准备后的离线转写、峰值内存，以及与聊天模型和 TTS 交替使用时的资源释放。
+- [ ] 收集目标方言样本，与 SenseVoice 对比转写错误率、数字/地名识别和延迟，再决定正式开放范围。
+
+具体方言尚未确定，不预先承诺覆盖或准确率。完整阶段、验收条件及 Companion 分工见 [Fun-ASR 集成计划](docs/mobile-agent-roadmap.md#fun-asr-plan)。
+
 ## 运行
 
 需要 JDK 17。默认构建还需要 Android SDK（`compileSdk 35`），通过 `local.properties` 中的 `sdk.dir` 或 Android SDK 环境变量配置。项目自带 Gradle Wrapper：
