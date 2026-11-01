@@ -83,14 +83,15 @@ class EmbeddingGemma2Port(
         }
     }
 
-    /** The host can provide an already oriented, downsampled image without re-encoding it. */
+    /** The host retains ownership of its oriented, downsampled image, including after failure. */
     suspend fun embedBitmap(bitmap: Bitmap): EmbeddingVector = withContext(Dispatchers.Default) {
         require(!bitmap.isRecycled) { "Image has been recycled" }
         currentCoroutineContext().ensureActive()
         lock.withLock {
-            val input = if (bitmap.config == Bitmap.Config.ARGB_8888) bitmap else
-                bitmap.copy(Bitmap.Config.ARGB_8888, false)
-                    ?: error("Could not convert image to ARGB_8888")
+            // MPImage.close() recycles the BitmapImageBuilder input. Always give it our own
+            // bitmap; the caller may reuse the original for previews or another inference.
+            val input = bitmap.copy(Bitmap.Config.ARGB_8888, false)
+                ?: error("Could not copy image to ARGB_8888")
             try {
                 val image = BitmapImageBuilder(input).build()
                 try {
@@ -99,7 +100,7 @@ class EmbeddingGemma2Port(
                     image.close()
                 }
             } finally {
-                if (input !== bitmap) input.recycle()
+                if (!input.isRecycled) input.recycle()
             }
         }
     }

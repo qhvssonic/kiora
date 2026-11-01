@@ -22,11 +22,13 @@ flowchart LR
 
 ## 当前实现
 
+已增加模型请求策略和推理资源协调接口；[Kiora Companion 0.1.107](https://github.com/qhvssonic/kiora-companion) 展示资料外发确认、来源持久化和多模型交替使用。接入与验证见下方说明和 [运行策略与资源管理](docs/runtime-safety.md)。
+
 设计细节见 [架构说明](docs/architecture.md)；手机文件与照片发送的接口和限制见 [A2A 附件说明](docs/attachments.md)。移动端语音、相册检索及其他差异化方向记录在 [移动端路线讨论](docs/mobile-agent-roadmap.md)。
 
 | 模块 | 内容 |
 | --- | --- |
-| `core` | 有界模型/工具循环、取消传播、工具选择与授权、JSON Schema 参数基础校验、宿主结构化工具结果与输出 Schema 校验、等待用户输入/授权状态、上下文窗口裁剪与持久摘要、模型用量记录、运行中指令队列、图片消息与工具结果、事件、分支会话、内存和 JSONL 存储；另提供可选的 `WorkspaceTools` |
+| `core` | 有界模型/工具循环、取消传播、工具选择与授权、参数和输出 Schema 校验、宿主结构化工具结果、等待输入/授权状态、上下文裁剪与持久摘要、用量、指令队列、图片、事件、分支会话与存储；另提供可选的 `WorkspaceTools`、`ModelRequestPolicy` 和 `InferenceCoordinator` |
 | `a2a` | 向其他 Agent 委托任务；从 Agent Card 读取每项 skill 及输入 MIME 类型并生成模型工具；A2A 1.x HTTP+JSON 与 JSONRPC 的发现、发送、续接、轮询、取消、文本、内联文件及 JSON 数据发送，支持 Bearer 凭据和跨任务的 `contextId` |
 | `android-attachments` | 将系统选择器授权的 `content://` 文件或照片安全地读成有大小上限的 A2A 附件 |
 | `android-storage-tools` | 基于 Android SAF 持久授权的目录与单张照片工具：浏览、搜索、查看信息、读取文本、复制、移动、重命名、删除；宿主提供授权 URI 清单 |
@@ -77,6 +79,20 @@ EmbeddingGemma 2 的 SDK 用法与 Android 依赖边界见 [嵌入模型接入�
 `read`、`write`、`edit` 只处理配置的工作区，不能直接读取手机相册或其他应用文件。`shell` 则能使用宿主进程已有的系统权限，不能当作受限工作区工具。`android-storage-tools` 单独提供基于 SAF 授权的文件操作，其 `list_authorized_photos` 只列出逐张持久授权的照片，不代表浏览整个相册。若宿主想浏览整个相册，需要先获得 Android 的完整照片访问权限，并自行通过 MediaStore 提供相应工具；`kiora-companion` 就采用这种集成方式。`android-code-sandbox` 的 JavaScript 独立进程工具与 `shell` 是两种不同能力，也不会自动互相替代。宿主负责工具选择、用户授权和 Android 系统权限。
 
 `content://` URI 转文件字节属于宿主内部的数据准备步骤，不是默认模型工具。模型需要查看用户选中的内容时，宿主可以把有时效的文件 ID 接入 `read`；模型决定发送文件时，由相应的 A2A skill 工具在授权后调用宿主文件读取器。`android-attachments` 提供有 10 MiB 上限的 Android URI 读取辅助类，也可以由宿主自行实现；`a2a` 负责将已有字节编码并发送。
+
+### 模型请求策略与推理资源协调
+
+| 接口 | 作用与宿主责任 |
+| --- | --- |
+| `ModelRequestPolicy` | 在模型响应、上下文超限重试和 runtime 发起的摘要前检查会话与待发送内容。宿主绑定真实目的地及资料策略；默认允许，SDK 不自动判断模型是否联网。 |
+| `ModelRequestRejectedException` | 拒绝请求并结束本轮；工具内部的外发检查也可使用它，剩余调用记为授权拒绝，避免模型继续换工具重试。 |
+| `InferenceCoordinator` | 与 Android UI 解耦的共享推理协调器；交互请求优先于排队批次，租用覆盖推理和安全释放。宿主决定哪些适配器共用实例，它不是固定 MiB 内存上限。 |
+
+工具执行授权和资料外发授权分别处理。Companion 以会话为单位持久保存来源标签，让扫描文字、语音转写、工具结果及派生回答/摘要继承外发策略；来源跟踪和授权界面属于宿主实现，不由 SDK 自动提供。Android 权限仍在实际读取时核验，资源检查不能替代模型对任务的理解。
+
+2026-11-01 在 V2509A / Android 16 上，来源/授权和语音相关 8 项回归、另 1 项包含 20 轮的混合模型循环通过。聊天模型为 Gemma 4 E2B / CPU，循环的进程 PSS 采样最高约 3.06 GiB；这是单机阶段采样，不是最低 RAM 要求或瞬时峰值保证。混合测试发现并修复了 MediaPipe 适配器回收调用方 Bitmap 的问题。
+
+**当前 Gemma 4 E2B 的知识与工具选择回归仍失败**，会把“写出诗句”误判为写文件。来源/权限保护通过不代表模型行为全部验收通过。完整条件、测试入口和未验证边界见 [真机记录](docs/runtime-safety.md#2026-11-01-真机验证)。A2A 文件接收仍未实现，本次更新不包含该功能。
 
 ### 图片与上下文
 

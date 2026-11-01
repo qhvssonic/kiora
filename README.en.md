@@ -25,7 +25,7 @@ flowchart LR
 
 | Module | Responsibility |
 | --- | --- |
-| `core` | Bounded model/tool loop, cancellation, active tool selection and authorization, basic JSON Schema argument validation, host-facing structured tool output and output Schema validation, input/authorization attention states, session branches, persistence, context protection and compaction, usage metadata, queued instructions, images, and runtime events. Optional `WorkspaceTools` are provided separately. |
+| `core` | Bounded model/tool loop, cancellation, tool selection and authorization, argument/output Schema validation, structured tool results, attention states, branches, persistence, context protection and compaction, usage, queues, images, and events. Optional `WorkspaceTools`, `ModelRequestPolicy`, and `InferenceCoordinator` support host integration. |
 | `a2a` | A2A 1.x client: Agent Card discovery, skill-to-tool mapping, HTTP+JSON and JSONRPC, task send/poll/resume/cancel, text, JSON data and inline files, Bearer credentials, and cross-task `contextId`. |
 | `android-attachments` | Read authorized Android `content://` files and photos into size-bounded A2A attachments. |
 | `android-storage-tools` | Tools for files in Storage Access Framework (SAF) directories explicitly authorized by the host. |
@@ -78,9 +78,21 @@ Android system permissions, SAF grants, and the host's tool authorization remain
 
 Images may be supplied with `AgentRuntime.run(..., images = ...)` or returned by a tool through `ToolOutput`/`ToolImage`, if the current model adapter accepts them. The current LiteRT-LM integration passes one image per turn. Image handling by other models depends on their packages and adapters.
 
+### Model request policy and inference coordination
+
+`ModelRequestPolicy` checks outgoing model requests, context-window retries, and runtime compaction before inference. The host supplies the actual recipient and data policy; the default policy allows requests and does not infer whether a custom model adapter uses a network. `ModelRequestRejectedException` stops the run, including rejection inside a tool, so remaining calls are recorded as authorization-denied rather than retried through another tool.
+
+The pure Kotlin `InferenceCoordinator` lets hosts share one coordinator across heavy local engines. Waiting interactive work precedes queued batches, and the lease includes safe native cleanup before handoff. It controls concurrency, not a fixed memory limit; Android lifecycle and system low-memory integration remain host responsibilities.
+
+Companion 0.1.107 persists conservative session-level source labels for scan text, speech transcripts, tool results, and their derived answers/summaries. Tool execution approval and permission to send data to an online model or A2A recipient are separate decisions. Source tracking and the approval UI are Companion features, not automatic SDK behavior.
+
+On 2026-11-01, V2509A / Android 16 passed eight source/permission/voice checks and one 20-round mixed-model test. With Gemma 4 E2B on CPU remaining resident, sampled process PSS peaked at 3.06 GiB. The test exposed a MediaPipe bitmap-ownership bug, which was fixed before the successful rerun. These are single-device stage samples, not minimum-RAM requirements or guaranteed instantaneous peaks.
+
+**The current Gemma 4 E2B knowledge/tool-routing regression still fails**, including treating a request to write out a poem as a file write. Passing resource and permission checks does not establish model decision quality. See [runtime safety and validation](docs/runtime-safety.md). A2A file reception remains unimplemented and is outside this update.
+
 ### Sessions and context
 
-The runtime stores the original, branch-aware conversation. The model-facing projection can use a persistent summary and retain recent turns; it can also shorten old tool results without deleting the stored originals. A host may configure `AutoCompaction` with its own resource budget. If summarization fails, a configured context-window crop is a fallback. Token estimates include text, tools, and image overhead, but are not exact tokenizer counts; leaving the window unknown does not make the runtime invent a model limit. A model-reported overflow can trigger one retry with a smaller input.
+The runtime stores the original, branch-aware conversation. The model-facing projection can use a persistent summary and retain recent turns; it can also shorten old tool results without deleting the stored originals. A host may configure `AutoCompaction` with its own resource budget. Ordinary summarization failures can fall back to a configured context-window crop; policy rejection stops the run. Token estimates include text, tools, and image overhead, but are not exact tokenizer counts; leaving the window unknown does not make the runtime invent a model limit. A model-reported overflow can trigger one retry with a smaller input.
 
 Steering and follow-up input can be queued during a run. A tool may report that user input or authorization is required, allowing the host to pause and resume the task. Persisting a local conversation is distinct from preserving a remote A2A task.
 

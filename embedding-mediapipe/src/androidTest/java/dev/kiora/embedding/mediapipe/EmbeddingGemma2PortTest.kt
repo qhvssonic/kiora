@@ -46,6 +46,14 @@ class EmbeddingGemma2PortTest {
                 } finally {
                     rgb565.recycle()
                 }
+                val reusable = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
+                try {
+                    reusable.eraseColor(Color.RED)
+                    assertEquals(768, port.embedBitmap(reusable).dimension)
+                    assertTrue("Embedding must not recycle a caller-owned bitmap", !reusable.isRecycled)
+                    assertEquals(768, port.embedBitmap(reusable).dimension)
+                    assertTrue(!reusable.isRecycled)
+                } finally { reusable.recycle() }
 
                 assertEquals(768, query.dimension)
                 assertEquals(768, document.dimension)

@@ -1,6 +1,8 @@
 # Kiora 的移动端差异化方向（讨论记录）
 
-更新于 2026-10-27。本文件记录实际能力、设计候选和验证顺序。Kiora 指 SDK；`kiora-companion` 是基于 SDK 的 Android 宿主应用，`pi` 是桌面端参考实现。离线 TTS 已接入并完成 V2509A 上的精度、线程和播放连续性验证；更广泛设备、音质和内存指标仍待测量。
+更新于 2026-11-01。本文件记录实际能力、设计候选和验证顺序。Kiora 指 SDK；`kiora-companion` 是基于 SDK 的 Android 宿主应用，`pi` 是桌面端参考实现。离线 TTS 已接入并完成 V2509A 上的精度、线程和播放连续性验证；更广泛设备、音质和内存指标仍待测量。
+
+本轮优先落地工具与资料外发控制、跨模型资源协调，见 [运行策略与资源管理](runtime-safety.md)。2026-11-01 V2509A 的来源/授权、语音与修复后的 20 轮混合模型循环通过；真实 Gemma 工具选择与知识回归仍失败，不能标记为 P0 全部验收通过。A2A 文件接收没有已确认需求，本轮不实现，后续协作先考虑任务状态恢复与取消语义。
 
 ## 判断依据
 
@@ -75,17 +77,17 @@ Google 于 2026-10-06 发布 EmbeddingGemma 2。它把文本、图片、音频�
 | 文档字段提取与校验 | 单页 OCR 行框、Companion 多页草稿、本地聊天模型、结构化工具结果 | 模型生成带来源的字段候选，程序检查 Schema、日期、数值关系和引用；人工校对后导出 JSON/CSV。不能把 OCR 行排序当成复杂表格恢复。 |
 | 条码与现场记录 | Companion 已有 ZXing、相机和 OCR | 用受控工具读取设备/物料标识并核对用户提供的清单；位置与传感器只按需采样并附时间、精度和来源。 |
 
-`ToolOutput.structuredContent`、输出 Schema 校验和 `ToolAttention` 已在 core 实现，以上方向应直接复用，详见 [架构](architecture.md)。Companion 仍有根据任务关键词判断纯图片问题并隐藏工具的逻辑；扩展文档和视觉组合任务时，应改用能力、授权和明确用户选择控制工具可见性，避免继续增加关键词规则。
+`ToolOutput.structuredContent`、输出 Schema 校验和 `ToolAttention` 已在 core 实现，以上方向应直接复用，详见 [架构](architecture.md)。Companion 0.1.107 已改为本轮能力与权限快照，不再按任务关键词隐藏图片场景工具；明确的连接别名仍用于绑定 A2A 目的地。模型本身的工具选择仍需真机回归。
 
 ## 其他移动端候选能力
 
 | 优先级 | SDK 方向 | 最小可验证行为 |
 | --- | --- | --- |
 | P0 | 可恢复运行与待处理任务 | core 已将缺失结果的历史工具调用标记为 `INTERRUPTED`，不自动重放；继续增加持久任务账本、幂等和副作用对账，收到远端 task ID 后立即保存。 |
-| P0 | 每轮配置与资源快照 | 在已有 configure/send 互斥和本轮附件绑定基础上，覆盖异步辅助推理与播放任务；切换会话后丢弃旧回调，校验资源版本与授权有效期。 |
-| P0 | 数据来源与外发记录 | 为照片、文件和音频记录来源、授权范围、目的地和失效状态；授权决定仍由宿主实现。 |
-| P1 | 资源预算与推理生命周期 | 测聊天模型驻留时的 TTS/ASR/OCR/Embedding 峰值，限制并发与队列；只能在已验证可安全重建的边界释放聊天会话，离线模式不自动转云端。 |
-| P1 | 与其他 Agent 的任务接力 | 对端可为服务器、其他设备或业务系统；补齐返回 JSON/文件产物、长任务恢复与明确远端取消。现有解析只提取文本，上传成功不代表手机已取得远端文件。 |
+| P0 · 已实现，待设备验收 | 每轮配置与资源快照 | 本轮附件绑定与工具能力快照、授权前资源校验、原有语音/相机取消与旧回调保护；继续验证切换会话和撤权场景。 |
+| P0 · 已实现 | 数据来源与外发记录 | `ModelRequestPolicy`；Companion 按会话继承来源与派生内容，在线模型/A2A 发送前独立确认、仅本地策略、最近 30 条授权记录。不是逐文件信息流跟踪。 |
+| P0 · 已实现，待设备验收 | 资源预算与推理生命周期 | `InferenceCoordinator` 限制重型推理并发并等待释放，交互优先于排队批次；Android 低内存拒绝启动。聊天会话继续保留，仍需测组合 PSS、等待时间与释放后趋势。 |
+| P1 | 与其他 Agent 的任务接力 | 对端可为服务器、其他设备或业务系统；优先持久任务状态、恢复查询和明确远端取消。文件接收保留为需求候选，尚未实现。 |
 | P2 | 按需采集的设备上下文 | 相机、位置、传感器等以一次性、带时间和来源的输入进入会话；避免默认常驻采集。 |
 | P2 | 诊断与回放 | 在不泄露原始个人媒体的前提下记录模型选择、工具事件、授权、重试和中断，构造进程回收与断网测试。 |
 
@@ -103,6 +105,6 @@ Google 于 2026-10-06 发布 EmbeddingGemma 2。它把文本、图片、音频�
 4. **Fun-ASR 集成计划**：先验证固定模型的 Android 推理与资源占用，再实现可选适配器和 Companion 导入/切换；以真实方言样本对照结果决定正式开放范围，见上方阶段表。
 5. 各阶段按需补齐资源预算、任务持久化和外发策略。后续联网协作保持 A2A 对端中立。
 
-本地处理与外发分别控制：在线 `ModelPort` 可能收到本地工具返回的文本和图片；A2A 是另一个出口。工具执行授权不自动代表允许发送至任意模型或 Agent，派生摘要和语音产物也应继承来源策略。
+本地处理与外发分别控制：Companion 已对在线模型和 A2A 任务发送接入独立外发检查，派生回答与摘要按会话继承来源。工具执行授权不代表任意外发。其他 SDK 宿主默认不会自动获得这项策略，须显式接入。
 
 参考资料：[EmbeddingGemma 2 发布说明](https://blog.google/innovation-and-ai/technology/developers-tools/embeddinggemma-2/)、[Google 模型说明](https://ai.google.dev/gemma/docs/embeddinggemma/model_card_2)、[Google AI Edge 手机端检索示例](https://developers.googleblog.com/google-ai-edge-with-embeddinggemma-2/)、[Android 端侧语音识别接口](https://developer.android.com/reference/android/speech/SpeechRecognizer)、[Android TTS Voice 接口](https://developer.android.com/reference/android/speech/tts/Voice)、[sherpa-onnx Android 示例](https://github.com/k2-fsa/sherpa-onnx/blob/master/android/README.md)、[sherpa-onnx 双遍识别](https://k2-fsa.github.io/sherpa/onnx/android/apk-2pass-cn.html)、[SenseVoiceSmall 模型卡](https://huggingface.co/FunAudioLLM/SenseVoiceSmall)、[Android 后台任务指南](https://developer.android.com/develop/background-work/background-tasks)。

@@ -30,6 +30,7 @@ class AgentRuntime(
     private val extraInputTokens: suspend () -> Int = { 0 },
     private val autoCompaction: AutoCompaction? = null,
     private val autoRunFollowUps: Boolean = true,
+    private val modelRequestPolicy: ModelRequestPolicy = ModelRequestPolicy {},
 ) {
     private val toolsByName = tools.associateBy { it.definition.name }
     private val locks = ConcurrentHashMap<String, Mutex>()
@@ -122,12 +123,13 @@ class AgentRuntime(
 
         val pendingToolCalls = mutableListOf<ToolCall>()
         var firstPendingRequested = false
-        suspend fun completePending(reason: String) = withContext(NonCancellable) {
+        suspend fun completePending(reason: String,
+            failureKind: ToolFailureKind = ToolFailureKind.INTERRUPTED) = withContext(NonCancellable) {
             while (pendingToolCalls.isNotEmpty()) {
                 val call = pendingToolCalls.first()
                 if (!firstPendingRequested) events.emit(AgentEvent.ToolRequested(call))
                 val result = AgentMessage.ToolResult(call.id, call.name, reason, true,
-                    failureKind = ToolFailureKind.INTERRUPTED)
+                    failureKind = failureKind)
                 append(result)
                 pendingToolCalls.removeAt(0)
                 firstPendingRequested = false
@@ -164,6 +166,8 @@ class AgentRuntime(
                                     transformed = contextTransformer.transform(session.modelMessagesThrough())
                             } catch (cancelled: CancellationException) {
                                 throw cancelled
+                            } catch (denied: ModelRequestRejectedException) {
+                                throw denied
                             } catch (_: Exception) {
                                 // Summary generation is best effort; the window limiter remains the fallback.
                             }
@@ -177,6 +181,7 @@ class AgentRuntime(
                         val onDelta: suspend (String) -> Unit = { delta ->
                             events.emit(AgentEvent.AssistantTextDelta(sessionId, delta))
                         }
+                        modelRequestPolicy.check(ModelRequest(sessionId, visible, ModelRequestPurpose.RESPONSE))
                         return if (model is UsageReportingModelPort)
                             model.respondStreamingWithUsage(visible, definitions, onDelta)
                         else ModelResponse(model.respondStreaming(visible, definitions, onDelta))
@@ -185,6 +190,8 @@ class AgentRuntime(
                         respond(observedContextWindowTokens)
                     } catch (cancelled: CancellationException) {
                         throw cancelled
+                    } catch (denied: ModelRequestRejectedException) {
+                        throw denied
                     } catch (error: Exception) {
                         val oldWindow = observedContextWindowTokens
                         if (oldWindow == null || !ContextWindowLimiter.isOverflow(error)) throw error
@@ -290,6 +297,8 @@ class AgentRuntime(
                                                 output.images, null, output.structuredContent, output.attention)
                                         } catch (cancelled: CancellationException) {
                                             throw cancelled
+                                        } catch (denied: ModelRequestRejectedException) {
+                                            throw denied
                                         } catch (error: Exception) {
                                             AgentMessage.ToolResult(
                                                 call.id, call.name, error.message ?: error.javaClass.simpleName, true,
@@ -299,6 +308,8 @@ class AgentRuntime(
                                     }
                                 } catch (cancelled: CancellationException) {
                                     throw cancelled
+                                } catch (denied: ModelRequestRejectedException) {
+                                    throw denied
                                 } catch (error: Exception) {
                                     AgentMessage.ToolResult(
                                         call.id, call.name,
@@ -327,6 +338,9 @@ class AgentRuntime(
         } catch (cancelled: CancellationException) {
             completePending("Run cancelled before tool result was recorded; execution status is unknown")
             throw cancelled
+        } catch (denied: ModelRequestRejectedException) {
+            completePending(denied.message ?: "Blocked by host data policy", ToolFailureKind.AUTHORIZATION_DENIED)
+            RunResult.Failed(denied.message ?: "Blocked by host data policy", sessionId)
         } catch (error: Exception) {
             RunResult.Failed(error.message ?: error.javaClass.simpleName, sessionId)
         }
@@ -406,7 +420,9 @@ class AgentRuntime(
         val previousBoundary = session.activeSummary()?.throughEntryId
         if (previousBoundary != null && path.indexOfFirst { it.id == previousBoundary } >= boundaryIndex)
             return null
-        val text = summarizer.summarize(session.modelMessagesThrough(boundary.id)).trim()
+        val messages = session.modelMessagesThrough(boundary.id)
+        modelRequestPolicy.check(ModelRequest(sessionId, messages, ModelRequestPurpose.SUMMARY))
+        val text = summarizer.summarize(messages).trim()
         require(text.isNotBlank()) { "Empty session summary" }
         require(text.toByteArray(Charsets.UTF_8).size <= 32 * 1024) { "Session summary exceeds 32 KiB" }
         val summary = SessionSummary(newId(), boundary.id, now(), text)
