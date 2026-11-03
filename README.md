@@ -11,13 +11,21 @@ Kotlin agent framework · LiteRT-LM & MNN · Local tools · Persistent sessions
 [![Build and test](https://github.com/qhvssonic/kiora/actions/workflows/ci.yml/badge.svg)](https://github.com/qhvssonic/kiora/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
-[Quick start](#quick-start) · [Companion app](https://github.com/qhvssonic/kiora-companion) · [Integration guide](docs/sdk-guide.en.md) · [Roadmap](#roadmap) · [Report an issue](https://github.com/qhvssonic/kiora/issues)
+[Demo](#demo) · [Quick start](#quick-start) · [Companion app](https://github.com/qhvssonic/kiora-companion) · [Integration guide](docs/sdk-guide.en.md) · [Roadmap](#roadmap) · [Report an issue](https://github.com/qhvssonic/kiora/issues)
 
 Kiora connects a language model to tools, authorization, and durable conversation state. Run a supported model inside your Android app, add the local capabilities your task needs, and delegate to another agent when network access is available. A2A peers can run on servers, other devices, or inside business systems.
 
 The runtime is **pure Kotlin/JVM**. Android APIs, UI, inference engines, and heavy native dependencies are optional adapters. Online Chat Completions-compatible models can use the same agent loop.
 
 > Experimental: APIs may change. Models and native artifacts need separate preparation; SDK snapshots currently use a local Maven publishing workflow.
+
+## Demo
+
+[![Kiora demo: local inference, document scanning, A2A collaboration and photo search](assets/kiora-demo-cover.jpg)](https://github.com/qhvssonic/kiora-companion/releases/download/v0.1.108/kiora-demo-zh-subtitles.mp4)
+
+**[▶ Watch / download the demo](https://github.com/qhvssonic/kiora-companion/releases/download/v0.1.108/kiora-demo-zh-subtitles.mp4)** · 3m 28s · Chinese subtitles · 4K MP4, ~203 MiB
+
+See the SDK in [Companion](https://github.com/qhvssonic/kiora-companion): local inference, scanning and Markdown organization, A2A file handoff, and semantic photo search. Recorded on **2026-10-22** with an earlier build; current UI and capabilities have changed. The full video is hosted as a Release asset; click the cover or link to open/download it.
 
 ## What you can build
 

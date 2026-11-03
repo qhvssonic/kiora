@@ -11,13 +11,21 @@ Kotlin 智能体框架 · LiteRT-LM / MNN · 本地工具 · 持久会话
 [![Build and test](https://github.com/qhvssonic/kiora/actions/workflows/ci.yml/badge.svg)](https://github.com/qhvssonic/kiora/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
-[快速开始](#快速开始) · [Companion 应用](https://github.com/qhvssonic/kiora-companion) · [完整接入指南](docs/sdk-guide.zh-CN.md) · [路线图](#路线图) · [反馈问题](https://github.com/qhvssonic/kiora/issues)
+[演示视频](#演示视频) · [快速开始](#快速开始) · [Companion 应用](https://github.com/qhvssonic/kiora-companion) · [完整接入指南](docs/sdk-guide.zh-CN.md) · [路线图](#路线图) · [反馈问题](https://github.com/qhvssonic/kiora/issues)
 
 Kiora 把模型、工具、授权和会话状态接入同一条运行链路：在 Android 应用内运行端侧模型，组合完成任务所需的本地能力，联网后再把适合的工作委托给其他 Agent。A2A 对端可以是服务器、其他设备或业务系统中的智能体。
 
 **核心是纯 Kotlin/JVM**，Android UI、平台 API、推理引擎和重型原生依赖通过可选适配器接入；兼容 Chat Completions 的在线模型也能使用同一套智能体流程。
 
 > 当前处于实验阶段，API 可能调整。模型与部分原生库需单独准备，SDK 快照目前通过本机 Maven 发布流程接入。
+
+## 演示视频
+
+[![Kiora 演示：端侧推理、文档扫描、A2A 协作与相册搜索](assets/kiora-demo-cover.jpg)](https://github.com/qhvssonic/kiora-companion/releases/download/v0.1.108/kiora-demo-zh-subtitles.mp4)
+
+**[▶ 观看／下载字幕版演示](https://github.com/qhvssonic/kiora-companion/releases/download/v0.1.108/kiora-demo-zh-subtitles.mp4)** · 3 分 28 秒 · 中文字幕 · 4K MP4，约 203 MiB
+
+通过 [Companion](https://github.com/qhvssonic/kiora-companion) 展示 SDK 的端侧推理、扫描整理 Markdown、A2A 文件交付与相册语义搜索。视频于 **2026-10-22** 录制，展示较早版本，当前界面与能力已有更新。原片作为 Release 附件保存，点击封面或链接打开／下载。
 
 ## 可以做什么
 
