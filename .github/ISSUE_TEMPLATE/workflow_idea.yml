@@ -1,0 +1,21 @@
+name: Workflow idea / 场景建议
+description: Describe a task you want to complete / 描述希望完成的实际任务
+body:
+  - type: textarea
+    id: task
+    attributes:
+      label: User task / 用户任务
+      description: What are you trying to finish, and what currently blocks you?
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Proposed workflow / 期望流程
+      description: Explain what should stay local and whether another A2A agent is involved. A model name alone is not a workflow.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or constraints / 替代方案与约束

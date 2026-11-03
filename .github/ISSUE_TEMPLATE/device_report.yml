@@ -1,0 +1,38 @@
+name: Device and model report / 设备与模型记录
+description: Share a successful or failed on-device setup / 反馈端侧组合的成功或失败
+body:
+  - type: input
+    id: device
+    attributes:
+      label: Device and Android version / 设备与 Android 版本
+    validations:
+      required: true
+  - type: textarea
+    id: configuration
+    attributes:
+      label: Exact configuration / 实际配置
+      description: App version or SDK commit, model files/revision/precision, CPU or GPU backend, and capability used.
+    validations:
+      required: true
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: Outcome / 结果
+      options:
+        - Works in the described conditions / 在所述条件下可用
+        - Partially works / 部分可用
+        - Fails / 失败
+    validations:
+      required: true
+  - type: textarea
+    id: procedure
+    attributes:
+      label: Procedure and observations / 步骤与观察
+      description: Include input length, offline/online state, steps and observed errors. If reporting latency or memory, give the measuring method and sample count; leave unknown values unknown.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Optional redacted evidence / 可选脱敏证据
+      description: Use synthetic or public sample data. Do not attach personal recordings, face templates or credentials.

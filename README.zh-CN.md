@@ -140,7 +140,7 @@ flowchart LR
 | [端侧模型](docs/on-device-models.md) · [ModelScope 模型合集](https://www.modelscope.cn/models/vqhvqh/kiora_model_bundles) | [A2A 附件](docs/attachments.md) · [Android 存储](docs/android-storage-tools.md) |
 | [语音识别](docs/speech-recognition.md) · [语音合成](docs/speech-synthesis.md) | [OCR](docs/document-ocr.md) · [向量](docs/embeddinggemma2-integration.md) · [人脸](docs/face-recognition.md) |
 
-欢迎运行示例、接入一个小工具，或反馈某个设备/模型组合的成功与失败。Issue 请包含设备、Android 版本、模型/后端、复现步骤和脱敏日志。也欢迎改进文档与英文翻译，见[贡献指南](CONTRIBUTING.md)。
+欢迎运行示例、接入一个小工具，或反馈某个设备/模型组合的成功与失败。Issue 请包含设备、Android 版本、模型/后端、复现步骤和脱敏日志。也欢迎改进文档与英文翻译，见[贡献指南](CONTRIBUTING.zh-CN.md)。
 
 如果 Kiora 对你有帮助，欢迎 Star，让更多开发者发现它。问题与建议请[提交 Issue](https://github.com/qhvssonic/kiora/issues)。
 

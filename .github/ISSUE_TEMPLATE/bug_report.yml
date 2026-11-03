@@ -1,0 +1,28 @@
+name: Bug report / 问题反馈
+description: Report a reproducible problem / 提供可复现的问题
+body:
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment / 环境
+      description: App version or SDK commit, device/OS, model filename and backend. For build failures, include JDK/Gradle and the command.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce / 复现步骤
+      description: Include a minimal request or code example using non-private sample data.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior / 预期与实际行为
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs or screenshots / 脱敏日志或截图
+      description: Remove API keys, tokens, private documents, faces and unrelated conversation content.
