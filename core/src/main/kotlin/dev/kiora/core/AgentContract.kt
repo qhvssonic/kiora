@@ -21,7 +21,13 @@ sealed interface AgentMessage {
         val structuredContent: JsonElement? = null,
         /** A tool that needs the user or host before work can continue. */
         val attention: ToolAttention? = null,
+        /** Optional observed effect; null means the tool made no verification claim. */
+        val verification: ToolVerification? = null,
     ) : AgentMessage {
+        constructor(callId: String, toolName: String, text: String, isError: Boolean,
+                    images: List<ToolImage>, failureKind: ToolFailureKind?,
+                    structuredContent: JsonElement? = null, attention: ToolAttention? = null) :
+            this(callId, toolName, text, isError, images, failureKind, structuredContent, attention, null)
         constructor(callId: String, toolName: String, text: String, isError: Boolean,
                     images: List<ToolImage>, failureKind: ToolFailureKind?) :
             this(callId, toolName, text, isError, images, failureKind, null, null)
@@ -46,6 +52,8 @@ sealed interface AgentMessage {
         init {
             require(failureKind == null || isError)
             require(attention == null || !isError)
+            require(attention == null || verification == null)
+            require(verification?.status != ToolVerificationStatus.FAILED || isError)
         }
     }
 }
@@ -56,6 +64,7 @@ enum class ToolFailureKind {
     AUTHORIZATION_DENIED,
     AUTHORIZATION_FAILED,
     EXECUTION_FAILED,
+    VERIFICATION_FAILED,
     LIMIT_REACHED,
     INTERRUPTED,
 }
@@ -70,16 +79,42 @@ data class ToolImage(val mimeType: String, val data: String) {
 
 enum class ToolAttention { INPUT_REQUIRED, AUTH_REQUIRED }
 
+enum class ToolVerificationStatus { VERIFIED, UNVERIFIED, FAILED }
+
+/** An adapter's bounded observation, not a guarantee about the user's entire task.
+ * The summary is model-visible: include only task-relevant evidence safe to disclose.
+ */
+data class ToolVerification(val status: ToolVerificationStatus, val summary: String) {
+    init { require(summary.isNotBlank()) }
+
+    internal fun modelPrefix() = "[Effect verification: $status] $summary\n"
+}
+
+/** Optional post-execution check. Must observe without repeating the action or acquiring new grants.
+ * Implementations own platform access, bounded waiting and the precise scope of their evidence.
+ */
+interface ToolEffectVerifier {
+    suspend fun verifyEffect(arguments: JsonObject, output: ToolOutput): ToolVerification
+}
+
 data class ToolOutput(
     val text: String,
     val images: List<ToolImage> = emptyList(),
     val structuredContent: JsonElement? = null,
     val isError: Boolean = false,
     val attention: ToolAttention? = null,
+    val verification: ToolVerification? = null,
 ) {
+    constructor(text: String, images: List<ToolImage> = emptyList(), structuredContent: JsonElement? = null,
+                isError: Boolean = false, attention: ToolAttention? = null) :
+        this(text, images, structuredContent, isError, attention, null)
     constructor(text: String, images: List<ToolImage>) : this(text, images, null, false, null)
 
-    init { require(attention == null || !isError) }
+    init {
+        require(attention == null || !isError)
+        require(attention == null || verification == null)
+        require(!isError || verification?.status != ToolVerificationStatus.VERIFIED)
+    }
 }
 
 data class ToolCall(

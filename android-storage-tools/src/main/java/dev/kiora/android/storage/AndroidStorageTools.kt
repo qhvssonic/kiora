@@ -7,6 +7,9 @@ import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import dev.kiora.core.AgentTool
 import dev.kiora.core.ToolDefinition
+import dev.kiora.core.ToolOutput
+import dev.kiora.core.ToolVerification
+import dev.kiora.core.ToolVerificationStatus
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
@@ -288,7 +291,13 @@ class AndroidStorageTools(
     private fun tool(name: String, description: String, parameters: JsonObject,
                      action: (JsonObject) -> String): AgentTool = object : AgentTool {
         override val definition = ToolDefinition(name, description, parameters)
-        override suspend fun execute(arguments: JsonObject): String = withContext(Dispatchers.IO) { action(arguments) }
+        override suspend fun execute(arguments: JsonObject): String = executeResult(arguments).text
+        override suspend fun executeResult(arguments: JsonObject): ToolOutput = withContext(Dispatchers.IO) {
+            ToolOutput(action(arguments), verification = if (name in setOf(
+                "copy_authorized_file", "move_authorized_file", "rename_authorized_file", "delete_authorized_file",
+            )) ToolVerification(ToolVerificationStatus.UNVERIFIED,
+                "The document provider returned success, but the final file state was not independently checked. Inspect the affected files before repeating a destructive operation.") else null)
+        }
     }
 
     private fun schema(vararg fields: Pair<String, String>, required: List<String> = emptyList()): JsonObject = buildJsonObject {

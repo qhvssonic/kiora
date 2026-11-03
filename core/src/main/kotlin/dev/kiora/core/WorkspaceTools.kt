@@ -12,6 +12,8 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /** Pi-style text file tools and an application-UID shell for a host-owned workspace. */
 class WorkspaceTools(
@@ -71,7 +73,7 @@ class WorkspaceTools(
         }
     }
 
-    private inner class Write : AgentTool {
+    private inner class Write : AgentTool, ToolEffectVerifier {
         override val definition = ToolDefinition(
             "write", "Create or overwrite a UTF-8 text file in the app's agent workspace. Use a relative path.",
             parameters(
@@ -86,6 +88,10 @@ class WorkspaceTools(
             write(file(path), arguments.string("content", allowBlank = true))
             "Wrote $path"
         }
+
+        override suspend fun verifyEffect(arguments: JsonObject, output: ToolOutput) = withContext(Dispatchers.IO) {
+            verifyContent(file(arguments.string("path")), arguments.string("content", allowBlank = true))
+        }
     }
 
     private inner class Edit : AgentTool {
@@ -99,7 +105,9 @@ class WorkspaceTools(
             ),
         )
 
-        override suspend fun execute(arguments: JsonObject): String = withContext(Dispatchers.IO) {
+        override suspend fun execute(arguments: JsonObject): String = executeResult(arguments).text
+
+        override suspend fun executeResult(arguments: JsonObject): ToolOutput = withContext(Dispatchers.IO) {
             val path = arguments.string("path")
             val oldText = arguments.string("oldText")
             val newText = arguments.string("newText", allowBlank = true)
@@ -108,8 +116,11 @@ class WorkspaceTools(
             val first = original.indexOf(oldText)
             require(first >= 0) { "oldText was not found" }
             require(original.indexOf(oldText, first + oldText.length) < 0) { "oldText occurs more than once" }
-            write(target, original.replaceRange(first, first + oldText.length, newText))
-            "Edited $path"
+            val expected = original.replaceRange(first, first + oldText.length, newText)
+            write(target, expected)
+            val verification = verifyContent(target, expected)
+            ToolOutput("Edited $path", isError = verification.status == ToolVerificationStatus.FAILED,
+                verification = verification)
         }
     }
 
@@ -120,7 +131,9 @@ class WorkspaceTools(
             parameters("command" to stringProperty("Shell command to run"), required = listOf("command")),
         )
 
-        override suspend fun execute(arguments: JsonObject): String = withContext(Dispatchers.IO) {
+        override suspend fun execute(arguments: JsonObject): String = executeResult(arguments).text
+
+        override suspend fun executeResult(arguments: JsonObject): ToolOutput = withContext(Dispatchers.IO) {
             val command = arguments.string("command")
             require(command.length <= 4096) { "Command exceeds 4096 characters" }
             val process = ProcessBuilder(shellExecutable, "-c", command)
@@ -155,12 +168,25 @@ class WorkspaceTools(
                 }
                 reader.join(1_000)
                 val captured = synchronized(output) { output.toByteArray().toString(Charsets.UTF_8) }
-                "exit=${process.exitValue()}\n$captured" + if (truncated) "\n[Output truncated at 32 KiB]" else ""
+                val exitCode = process.exitValue()
+                ToolOutput(
+                    "exit=$exitCode\n$captured" + if (truncated) "\n[Output truncated at 32 KiB]" else "",
+                    structuredContent = buildJsonObject { put("exitCode", exitCode); put("truncated", truncated) },
+                    isError = exitCode != 0,
+                    verification = if (exitCode == 0) ToolVerification(ToolVerificationStatus.UNVERIFIED,
+                        "The shell process exited with code 0. Effects of commands, launched activities, services or remote requests were not independently checked; do not claim those effects are complete.") else null,
+                )
             } finally {
                 if (process.isAlive) process.destroyForcibly()
             }
         }
     }
+
+    private fun verifyContent(target: File, expected: String): ToolVerification =
+        if (text(target) == expected) ToolVerification(ToolVerificationStatus.VERIFIED,
+            "Read back the UTF-8 file and matched the complete requested content.")
+        else ToolVerification(ToolVerificationStatus.FAILED,
+            "The file's observed content does not match the requested content. A partial change may remain; inspect it before retrying.")
 
     private fun JsonObject.string(key: String, allowBlank: Boolean = false): String {
         val value = this[key]?.jsonPrimitive?.content ?: error("$key is required")

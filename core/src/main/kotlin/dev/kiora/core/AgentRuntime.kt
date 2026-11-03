@@ -11,6 +11,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** One runtime can serve many sessions; calls for the same session are serialized. */
 class AgentRuntime(
@@ -293,8 +294,32 @@ class AgentRuntime(
                                                     }
                                                 }
                                             }
-                                            AgentMessage.ToolResult(call.id, call.name, output.text, output.isError,
-                                                output.images, null, output.structuredContent, output.attention)
+                                            val verification = if (!output.isError && output.attention == null &&
+                                                tool is ToolEffectVerifier) {
+                                                try {
+                                                    withTimeoutOrNull(5_000) {
+                                                        tool.verifyEffect(call.arguments, output)
+                                                    } ?: ToolVerification(ToolVerificationStatus.UNVERIFIED,
+                                                        "Effect verification timed out. The action may have taken effect; inspect the result before retrying.")
+                                                } catch (cancelled: CancellationException) {
+                                                    throw cancelled
+                                                } catch (denied: ModelRequestRejectedException) {
+                                                    throw denied
+                                                } catch (_: Exception) {
+                                                    ToolVerification(ToolVerificationStatus.UNVERIFIED,
+                                                        "The action returned, but its effect could not be checked. Do not assume completion or repeat the action automatically.")
+                                                }
+                                            } else output.verification
+                                            val verificationFailed = verification?.status == ToolVerificationStatus.FAILED
+                                            val text = if (verification == null) output.text else
+                                                verification.modelPrefix() + output.text
+                                            AgentMessage.ToolResult(call.id, call.name, text,
+                                                output.isError || verificationFailed, output.images,
+                                                when {
+                                                    verificationFailed -> ToolFailureKind.VERIFICATION_FAILED
+                                                    output.isError -> ToolFailureKind.EXECUTION_FAILED
+                                                    else -> null
+                                                }, output.structuredContent, output.attention, verification)
                                         } catch (cancelled: CancellationException) {
                                             throw cancelled
                                         } catch (denied: ModelRequestRejectedException) {

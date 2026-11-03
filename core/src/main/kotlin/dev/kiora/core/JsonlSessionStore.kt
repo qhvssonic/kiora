@@ -272,6 +272,9 @@ class JsonlSessionStore(private val directory: File) : SessionStore, SessionSumm
             message.failureKind?.let { "failureKind" to JsonPrimitive(it.name) },
             message.structuredContent?.let { "structuredContent" to it },
             message.attention?.let { "attention" to JsonPrimitive(it.name) },
+            message.verification?.let { "verification" to JsonObject(mapOf(
+                "status" to JsonPrimitive(it.status.name), "summary" to JsonPrimitive(it.summary),
+            )) },
         ))
     }
 
@@ -307,6 +310,11 @@ class JsonlSessionStore(private val directory: File) : SessionStore, SessionSumm
             record["structuredContent"],
             record["attention"]?.jsonPrimitive?.content?.let { name ->
                 ToolAttention.entries.firstOrNull { it.name == name }
+            },
+            record["verification"]?.jsonObject?.let { value ->
+                ToolVerificationStatus.entries.firstOrNull { it.name == value.string("status") }?.let {
+                    ToolVerification(it, value.string("summary"))
+                }
             },
         )
         else -> error("Unknown message role")

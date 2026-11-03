@@ -33,16 +33,18 @@ object ContextWindowLimiter {
                 if (allowed <= 16) continue
                 if (estimate(result) > allowed) {
                     val marker = "\n[工具结果已按上下文窗口截断]"
-                    val contentBudget = allowed - 8 - estimateText(result.toolName) - estimateText(marker)
+                    val prefix = result.verification?.modelPrefix().orEmpty()
+                    val body = result.text.removePrefix(prefix)
+                    val contentBudget = allowed - 8 - estimateText(result.toolName) - estimateText(marker) - estimateText(prefix)
                     if (contentBudget <= 0) continue
                     var low = 0
-                    var high = result.text.length
+                    var high = body.length
                     while (low < high) {
                         val middle = (low + high + 1) / 2
-                        if (estimateText(result.text.take(middle)) <= contentBudget) low = middle
+                        if (estimateText(body.take(middle)) <= contentBudget) low = middle
                         else high = middle - 1
                     }
-                    current[index] = result.copy(text = result.text.take(low) + marker)
+                    current[index] = result.copy(text = prefix + body.take(low) + marker)
                     currentTokens = current.sumOf(::estimate)
                 }
                 if (currentTokens <= inputBudget) break

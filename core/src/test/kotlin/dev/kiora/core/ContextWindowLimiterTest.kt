@@ -8,6 +8,18 @@ import kotlin.test.assertTrue
 
 class ContextWindowLimiterTest {
     @Test
+    fun `truncating tool output preserves the complete verification conclusion`() {
+        val verification = ToolVerification(ToolVerificationStatus.UNVERIFIED, "Only submission was observed; do not claim completion.")
+        val original = AgentMessage.ToolResult("c", "shell", verification.modelPrefix() + "日志".repeat(3000),
+            false, emptyList(), null, verification = verification)
+        val visible = ContextWindowLimiter.fit(listOf(AgentMessage.User("run"), AgentMessage.Assistant(""), original),
+            emptyList(), 900, 200)
+        val result = assertIs<AgentMessage.ToolResult>(visible.last())
+        assertTrue(result.text.startsWith(verification.modelPrefix()))
+        assertTrue(result.text.contains("截断"))
+        assertEquals(verification, result.verification)
+    }
+    @Test
     fun `keeps the newest turn and leaves stored history intact`() {
         val history = listOf(
             AgentMessage.User("旧问题".repeat(350)),

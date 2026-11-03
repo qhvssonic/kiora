@@ -1,6 +1,6 @@
 # 工具、资料外发与推理资源协调
 
-更新于 2026-11-01。SDK 提供与 Android UI 解耦的策略和协调接口，Companion 0.1.107 实现 Android 集成。
+更新于 2026-11-03。SDK 提供与 Android UI 解耦的策略和协调接口，Companion 0.1.108 实现 Android 集成。
 本轮不增加 A2A 文件接收。
 
 ## 工具与资源引用
@@ -14,6 +14,68 @@ Companion 按每轮开始时的能力快照选择工具：已配置工具、有�
 不可访问的授权文件和照片在授权弹窗前返回参数错误；执行阶段继续检查实际权限。
 这能阻止无效操作，但不能保证小模型不提出错误调用或知识回答一定正确。
 原有 `LocalToolRoutingTest` 仍需在实际模型上重新运行，不能用假模型的协议测试替代。
+
+## 执行结果与效果验证（2026-11-03）
+
+参数有效、用户允许、API 正常返回和实际效果达成是不同的事实。`ToolAuthorizer` 只决定是否允许执行，
+`outputSchema` 只检查结果形状；两者都不能证明页面、服务、文件或远端业务已达到目标状态。
+
+工具可实现纯 Kotlin 的 `ToolEffectVerifier.verifyEffect(arguments, output)`，由适配层观察执行后的状态。
+runtime 在动作正常返回且不需要补充输入/授权时调用一次验证器，协程超时为 5 秒；它不是动作重试器。
+验证器必须遵循原有授权、限制观察范围，并为阻塞平台调用自行设置超时，不得重做动作或自动获取额外权限。
+
+`ToolOutput` 也可直接携带 `ToolVerification`，适合需要在同一次执行中保留预期值、立即回读的操作。
+存在 `ToolEffectVerifier` 时，以该验证器的观察结论为准。
+
+| 状态 | runtime 行为 | Companion 显示 |
+| --- | --- | --- |
+| `VERIFIED` | 记录适配器明确描述的已观察效果；不代表用户整个任务完成 | 结果已验证 |
+| `UNVERIFIED` | 动作已返回但效果未确认；不转换为已验证成功，也不自动重复动作 | 效果未确认 |
+| `FAILED` | `isError=true`，失败分类为 `VERIFICATION_FAILED`；副作用可能部分发生 | 调用失败 |
+| 没有验证字段 | 保持旧工具的调用语义，不补造验证结论 | 已调用 |
+
+验证器异常或自身观察超时会记录 `UNVERIFIED`，避免把“无法观察”错误当成“动作未发生”。
+外部取消仍传播；会话会记录执行状态未知。动作本身出错、需要输入或授权时跳过验证器。
+验证结论和证据摘要在模型可见文本的开头，不能只放在宿主专用的 `structuredContent`；
+上下文裁剪保留完整验证前缀，空间不足时停止请求而不是悄悄丢掉结论。
+JSONL 和 Companion Room JSON payload 均保存验证字段，旧记录缺失字段时仍可读取，无须改 Room 表结构。
+
+已接入的具体边界：
+
+- 工作区 `write` 写后回读 UTF-8 全文，与本次请求内容比较；`edit` 在写入后与本次完整预期内容比较。
+  检查的是回读时刻的内容，没有承诺断电持久性，也不防止其他写入方在检查后再次更改。
+- `shell` 非零退出码通过 `isError` 和 `EXECUTION_FAILED` 返回；退出码与截断标记放在 `structuredContent`。
+  退出码为 0 仅证明进程正常退出，效果仍为 `UNVERIFIED`，不会根据命令关键词猜测 Activity、服务或远端操作成功。
+- SAF 复制、移动、重命名、删除保留原有提供器返回值检查，但没有独立回读最终文件状态，明确记录 `UNVERIFIED`。
+  Companion 的 `manage_phone_file` 透传完整 `ToolOutput`，不丢弃失败、验证和结构化数据。
+- 本轮不新增任意 App 启动、无障碍读取、前台服务，也不新增 A2A 结果独立验真。
+  A2A `COMPLETED` 仍是对端报告的协议状态。通用验证接口不能自动证明对端业务结果。
+
+证据摘要由宿主适配器生成，只应包含本任务允许披露的最小信息。框架不自动扫描前台包名、
+界面节点或手机其他内容，也不能保证模型永远正确解读结果或不会再次提出工具调用。
+
+### 接入示例
+
+```kotlin
+class LaunchTool(private val host: HostLauncher) : AgentTool, ToolEffectVerifier {
+    // definition / execute: 在原授权范围内提交启动请求。
+    override suspend fun verifyEffect(arguments: JsonObject, output: ToolOutput): ToolVerification =
+        if (host.observedTargetVisible())
+            ToolVerification(ToolVerificationStatus.VERIFIED, "Observed the requested target screen visible.")
+        else
+            ToolVerification(ToolVerificationStatus.UNVERIFIED, "Launch was submitted; target visibility was not confirmed.")
+}
+```
+
+上例为宿主伪代码，`HostLauncher` 不属于 SDK；应按真实平台与业务选择证据，不能只检查调用未抛异常。
+
+### 本地验证（2026-11-03）
+
+SDK 纯 Kotlin/JVM 115 项测试、Companion 67 项 JVM 测试通过；SDK Android Demo 和
+Companion 0.1.108 调试 APK 构建通过。新增回归覆盖正常返回后的效果失败、观察异常/超时/取消、
+shell 非零退出与零退出未确认、UTF-8 写后回读、验证结论的模型/事件/JSONL/Room 一致性、
+上下文裁剪、旧 `ToolOutput` 默认构造函数的已编译调用兼容，以及文件管理包装层的完整结果透传。
+这些是本地协议与状态回归，本轮未进行 ROM 后台启动拦截的真机复现，也没有宣称此前的 Gemma 知识/工具选择问题已经解决。
 
 ## 模型请求策略
 
